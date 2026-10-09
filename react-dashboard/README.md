@@ -1,5 +1,22 @@
 # Pulse React Dashboard
 
+## Cloudflare Workers 部署
+
+GitHub 連線後，在 Cloudflare 的 Workers 建置設定使用：
+
+- Root directory：`react-dashboard`
+- Build command：`npm ci && npm run build`
+- Deploy command：`npx wrangler deploy`
+
+`wrangler.jsonc` 指定上傳 `dist` 建置產物，請勿將專案原始碼目錄當作靜態資源部署。
+
+在建置環境變數（Build variables and secrets）設定 `VITE_SUPABASE_URL` 與
+`VITE_SUPABASE_PUBLISHABLE_KEY`（Supabase 的前端 publishable key），然後重新建置部署。
+Vite 在建置時將這些值寫入前端程式；只設定 Worker 執行時的變數並不會更新靜態網站。
+本機 `.env.local` 不會提交至 GitHub。前端不可使用 Supabase service role 或 secret key。
+
+目前頁面只讀取已登入使用者的 GPS 紀錄，尚未提供登入表單；未登入會顯示「請先登入」。
+
 以 React 與 Vite 建立的繁體中文營運儀表板。所有數據皆為靜態示範資料，尚未串接 API 或登入服務。
 
 ## 開始使用

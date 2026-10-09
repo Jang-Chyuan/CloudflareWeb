@@ -3,10 +3,15 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabasePublishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-if (!supabaseUrl || !supabasePublishableKey) {
-  throw new Error(
-    '請在 .env.local 設定 VITE_SUPABASE_URL 與 VITE_SUPABASE_PUBLISHABLE_KEY，並重新啟動開發伺服器。',
-  );
-}
+export let supabase = null;
+export let supabaseConfigError = '';
 
-export const supabase = createClient(supabaseUrl, supabasePublishableKey);
+if (!supabaseUrl || !supabasePublishableKey) {
+  supabaseConfigError = '網站尚未完成連線設定，請聯絡網站管理員。';
+} else {
+  try {
+    supabase = createClient(supabaseUrl, supabasePublishableKey);
+  } catch {
+    supabaseConfigError = '網站連線設定有誤，請聯絡網站管理員。';
+  }
+}

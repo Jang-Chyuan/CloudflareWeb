@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabase } from './lib/supabaseClient';
+import { supabase, supabaseConfigError } from './lib/supabaseClient';
 
 export default function App() {
   const [records, setRecords] = useState([]);
@@ -7,25 +7,32 @@ export default function App() {
 
   useEffect(() => {
     async function loadGPS() {
-      const { data: authData } =
-        await supabase.auth.getUser();
-
-      if (!authData.user) {
-        setError('請先登入');
+      if (!supabase) {
+        setError(supabaseConfigError);
         return;
       }
+      try {
+        const { data: authData } = await supabase.auth.getUser();
 
-      const { data, error } = await supabase
-        .from('gps_logs')
-        .select('latitude, longitude, recorded_at')
-        .eq('user_id', authData.user.id)
-        .order('recorded_at', { ascending: false })
-        .limit(100);
+        if (!authData.user) {
+          setError('請先登入');
+          return;
+        }
 
-      if (error) {
-        setError(error.message);
-      } else {
-        setRecords(data ?? []);
+        const { data, error } = await supabase
+          .from('gps_logs')
+          .select('latitude, longitude, recorded_at')
+          .eq('user_id', authData.user.id)
+          .order('recorded_at', { ascending: false })
+          .limit(100);
+
+        if (error) {
+          setError(error.message);
+        } else {
+          setRecords(data ?? []);
+        }
+      } catch {
+        setError('無法載入 GPS 資料，請稍後再試。');
       }
     }
 
