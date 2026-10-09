@@ -62,7 +62,7 @@ export default function History({ masters, aliases, hidden, onDetails }) {
     const fields = ['slave_id', 'master_id', 'time_taipei', 'latitude', 'longitude', 'speed_kmh', 'battery_percentage', 'activity'];
     const text = [fields.join(','), ...filtered.map(row => [row.slave_id, row.master_id, formatTime(row.track_at), row.slave_lat, row.slave_lon, row.speed_kmh, row.battery_valid ? row.battery_percentage : '', row.activity_valid ? row.activity : ''].join(','))].join('\r\n');
     const url = URL.createObjectURL(new Blob(['\uFEFF', text], { type: 'text/csv;charset=utf-8' }));
-    const link = document.createElement('a'); link.href = url; link.download = `DogTracker-${startDate}-${endDate}.csv`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const link = document.createElement('a'); link.href = url; link.download = `DogWebTracker-${startDate}-${endDate}.csv`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   function inspect(id) {
     const samples = filtered.filter(row => row.slave_id === id && row.track_at <= visibleTime);

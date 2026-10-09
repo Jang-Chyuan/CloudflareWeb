@@ -16,13 +16,13 @@ export default function Login({ authError }) {
     finally { setBusy(false); }
   }
   return <div className="login-page">
-    <div className="login-intro"><div className="brand"><span className="brand-paw">🐾</span> DogTracker</div>
+    <div className="login-intro"><div className="brand"><span className="brand-paw">🐾</span> DogWebTracker</div>
       <span className="eyebrow">SLAVE TRACKING</span><h1>隨時掌握，<br />每一隻狗的位置。</h1>
       <p>查看犬隻位置、移動軌跡與項圈狀態。</p>
       <div className="login-features"><span>◎ 即時地圖</span><span>↝ 歷史軌跡</span><span>▥ 活動紀錄</span></div>
     </div>
-    <section className="login-card"><span className="eyebrow">歡迎回來</span><h2>登入 DogTracker</h2>
-      <p>使用 DogTracker App 相同的雲端帳號。</p>
+    <section className="login-card"><span className="eyebrow">歡迎回來</span><h2>登入 DogWebTracker</h2>
+      <p>使用原手機 App 相同的雲端帳號。</p>
       <form onSubmit={login}>
         <label>Email<input type="email" autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} required disabled={busy || !supabase} placeholder="you@example.com" /></label>
         <label>密碼<input type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required disabled={busy || !supabase} placeholder="輸入帳號密碼" /></label>

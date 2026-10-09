@@ -77,9 +77,9 @@ test('login, Slave map, detail, history playback and logout without phone locati
   await expect(page.locator('tbody pre')).toContainText('activityScore');
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: '匯出 CSV ↓' }).click();
-  expect((await downloadPromise).suggestedFilename()).toMatch(/DogTracker.*\.csv$/);
+  expect((await downloadPromise).suggestedFilename()).toMatch(/DogWebTracker.*\.csv$/);
   await page.getByRole('button', { name: '登出', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '登入 DogTracker' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '登入 DogWebTracker' })).toBeVisible();
   await expect(page.locator('.dog-card')).toHaveCount(0);
   expect(requested.some(path => path.includes('gps_logs') || path.includes('phone_locations'))).toBe(false);
   expect(failures).toEqual([]);

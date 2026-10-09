@@ -29,10 +29,10 @@ test('offline reload opens cached app with truthful offline notice', async ({ pa
   await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
   await context.setOffline(true);
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await expect(page.getByRole('heading', { name: '登入 DogTracker' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '登入 DogWebTracker' })).toBeVisible();
   await expect(page.getByRole('status').filter({ hasText: '離線中' })).toBeVisible();
   await page.goto('/offline-navigation-check', { waitUntil: 'domcontentloaded' });
-  await expect(page.getByRole('heading', { name: '登入 DogTracker' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '登入 DogWebTracker' })).toBeVisible();
   const apiResponse = await page.evaluate(async () => {
     try { const response = await fetch('/api/offline-check'); return response.headers.get('content-type'); }
     catch { return 'network-failure'; }

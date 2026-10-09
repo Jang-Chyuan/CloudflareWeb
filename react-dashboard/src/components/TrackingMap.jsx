@@ -3,7 +3,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { dogColor, dogName } from '../tracking/telemetry';
 
-export default function TrackingMap({ dogs, routes, hidden, focus, aliases, showTrails, onDetails, viewKey }) {
+export default function TrackingMap({ dogs, routes, hidden, focus, aliases, showTrails, onDetails, viewKey, syncing = false }) {
   const host = useRef(null), mapRef = useRef(null), layers = useRef(null), fitKey = useRef(null);
   const detailsRef = useRef(onDetails);
   detailsRef.current = onDetails;
@@ -62,6 +62,6 @@ export default function TrackingMap({ dogs, routes, hidden, focus, aliases, show
     <div ref={host} className="map-canvas" aria-label="Slave 位置與移動軌跡地圖" />
     {tileError && <div className="map-notice" role="status">底圖暫時無法載入，犬隻資料仍可查看。</div>}
     {!dogs.some(dog => dog.position && !dog.stale && !hidden.includes(dog.id)) &&
-      <div className="map-empty">目前沒有可顯示的即時位置<span>可在清單查看最後封包，或切換歷史軌跡。</span></div>}
+      <div className="map-empty" role="status">{syncing ? '資料同步中' : '目前沒有可顯示的即時位置'}<span>{syncing ? '正在讀取犬隻資料，請稍候。' : '可在清單查看最後封包，或切換歷史軌跡。'}</span></div>}
   </div>;
 }

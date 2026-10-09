@@ -41,7 +41,7 @@ function Dashboard({ session }) {
     finally { setSigningOut(false); }
   }
   return <div className="app-shell">
-    <header className="app-header"><a className="brand" href="#" onClick={e => { e.preventDefault(); setTab('live'); }}><span className="brand-paw">🐾</span> DogTracker <span className="web-badge">WEB</span></a>
+    <header className="app-header"><a className="brand" href="#" onClick={e => { e.preventDefault(); setTab('live'); }}><span className="brand-paw">🐾</span> DogWebTracker <span className="web-badge">WEB</span></a>
       <nav aria-label="主要導覽"><button className={tab === 'live' ? 'active' : ''} onClick={() => setTab('live')}>◎ 即時追蹤</button><button className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>↝ 歷史軌跡</button></nav>
       <div className="account"><span title={session.user.email}>{session.user.email}</span><button className="secondary" disabled={signingOut} onClick={logout}>{signingOut ? '登出中…' : '登出'}</button></div>
     </header>
@@ -58,7 +58,7 @@ function Dashboard({ session }) {
               {[3, 10, 30, 60, 360, 1440].map(minutes => <option key={minutes} value={minutes}>過去 {minutes < 60 ? `${minutes} 分鐘` : `${minutes / 60} 小時`}</option>)}</select>
             <button className="text-button" onClick={() => { setFocus(null); save({ hidden: [] }); }}>顯示全部</button>
           </div></div>
-          <TrackingMap dogs={dogs} routes={routes} hidden={preferences.hidden} focus={focus} aliases={preferences.aliases} showTrails={preferences.trails} onDetails={id => setDetails({ id })} viewKey="live" />
+          <TrackingMap dogs={dogs} routes={routes} hidden={preferences.hidden} focus={focus} aliases={preferences.aliases} showTrails={preferences.trails} onDetails={id => setDetails({ id })} viewKey="live" syncing={cloud.loading} />
           <div className="map-footer"><span>🐕 點選犬隻圖示查看詳細資訊</span><span>位置超過 3 分鐘未更新即隱藏</span></div>
         </section><aside className="dog-list">
           <div className="dog-list-heading"><h2>犬隻 <span>{dogs.length}</span></h2><span>最近 24 小時</span></div>
@@ -69,7 +69,7 @@ function Dashboard({ session }) {
             onFollow={() => setFocus(focus === dog.id ? null : dog.id)} onToggle={() => toggleDog(dog.id)} onDetails={() => setDetails({ id: dog.id })} />)}</div>
         </aside></div>
       </> : <History masters={cloud.masters} aliases={preferences.aliases} hidden={preferences.hidden} onDetails={setDetails} />}
-      <footer className="app-footer"><span>DogTracker · Slave 追蹤</span><span>時間均為台灣時間（UTC+8）</span></footer>
+      <footer className="app-footer"><span>DogWebTracker · Slave 追蹤</span><span>時間均為台灣時間（UTC+8）</span></footer>
     </main>
     {selectedDog && <DogDetails key={`${selectedDog.id}:${details?.history ? 'history' : 'live'}`} dog={selectedDog} rows={details?.history ? details.rows : cloud.rows} now={details?.history ? details.now : now} history={!!details?.history}
       aliases={preferences.aliases} onAlias={(id, alias) => save({ aliases: { ...preferences.aliases, [id]: alias } })} onClose={closeDetails}
@@ -79,6 +79,6 @@ function Dashboard({ session }) {
 
 export default function App() {
   const auth = useAuth();
-  return <ErrorBoundary>{!auth.ready ? <div className="empty-state"><h1>DogTracker</h1><p>正在恢復登入…</p></div>
+  return <ErrorBoundary>{!auth.ready ? <div className="empty-state"><h1>DogWebTracker</h1><p>正在恢復登入…</p></div>
     : auth.session ? <Dashboard key={auth.session.user.id} session={auth.session} /> : <Login authError={auth.error} />}</ErrorBoundary>;
 }
