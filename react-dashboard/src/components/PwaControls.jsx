@@ -51,7 +51,7 @@ export default function PwaControls() {
     {!online && <div className="pwa-notice" role="status">離線中 · 可開啟已快取的介面；登入、最新犬隻資料與底圖需要網路。</div>}
     {error && <div className="pwa-notice" role="alert">{error}<button className="text-button" onClick={() => setError('')}>關閉</button></div>}
     {needRefresh && <div className="pwa-notice pwa-update" role="status"><span>新版本已就緒</span><button className="primary" onClick={update}>更新並重新開啟</button><button className="text-button" onClick={() => setNeedRefresh(false)}>稍後</button></div>}
-    {!standalone && installPrompt && <button className="pwa-install secondary" disabled={installing} onClick={install}>{installing ? '安裝中…' : '＋ 安裝 DogTracker'}</button>}
+    {!standalone && installPrompt && <button className="pwa-install secondary" disabled={installing} onClick={install}>{installing ? '安裝中…' : '＋ 安裝 DogWebTracker'}</button>}
     {!standalone && ios && !installPrompt && <details className="pwa-ios"><summary>加入主畫面</summary><p>在 Safari 點「分享」，選擇「加入主畫面」。</p></details>}
   </div>;
 }

@@ -5,7 +5,8 @@ test('production manifest, icons and active Service Worker', async ({ page }) =>
   await page.goto('/');
   const manifestURL = await page.locator('link[rel=manifest]').getAttribute('href');
   const manifest = await (await page.request.get(manifestURL)).json();
-  expect(manifest.name).toContain('DogTracker');
+  expect(manifest.name).toBe('DogWebTracker');
+  expect(manifest.short_name).toBe('DogWebTracker');
   expect(manifest.display).toBe('standalone'); expect(manifest.start_url).toBe('/'); expect(manifest.scope).toBe('/');
   expect(manifest.icons.some(icon => icon.purpose === 'maskable' && icon.sizes === '512x512')).toBe(true);
   for (const icon of manifest.icons) {
@@ -51,7 +52,7 @@ test('installation entry handles browser prompt and removes itself after install
     event.userChoice = Promise.resolve({ outcome: 'accepted', platform: 'web' });
     window.dispatchEvent(event);
   });
-  const install = page.getByRole('button', { name: '＋ 安裝 DogTracker' });
+  const install = page.getByRole('button', { name: '＋ 安裝 DogWebTracker' });
   await expect(install).toBeVisible(); await install.click();
   await page.evaluate(() => window.dispatchEvent(new Event('appinstalled')));
   await expect(install).not.toBeVisible();
