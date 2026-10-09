@@ -7,7 +7,7 @@ export default defineConfig({
     injectRegister: false,
     includeAssets: ['icons/*.png', 'icons/icon.svg'],
     manifest: {
-      id: '/', name: 'DogTracker · Slave 追蹤', short_name: 'DogTracker',
+      id: '/', name: 'DogTracker · Slave 追蹤', short_name: 'DogWebTracker',
       description: '犬隻位置、項圈狀態與歷史軌跡', lang: 'zh-Hant',
       start_url: '/', scope: '/', display: 'standalone',
       theme_color: '#247a61', background_color: '#f7f7f7',
