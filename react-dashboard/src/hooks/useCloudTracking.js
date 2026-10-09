@@ -40,7 +40,7 @@ export function useCloudTracking(owner) {
     let active = true, busy = false, cursor = null, reconciledAt = 0, knownMasters = '';
     let controller;
     async function refresh(force = false) {
-      if (!active || busy || document.visibilityState === 'hidden') return;
+      if (!active || busy || document.visibilityState === 'hidden' || !navigator.onLine) return;
       busy = true;
       controller = new AbortController();
       // Finite requests, including initial and historical downloads.
@@ -72,9 +72,11 @@ export function useCloudTracking(owner) {
     const interval = setInterval(() => refresh(), 30000);
     const resume = () => { if (document.visibilityState === 'visible') refresh(); };
     document.addEventListener('visibilitychange', resume);
+    window.addEventListener('online', resume);
     return () => {
       active = false; controller?.abort(); clearInterval(interval);
       document.removeEventListener('visibilitychange', resume); refreshRef.current = () => {};
+      window.removeEventListener('online', resume);
     };
   }, [owner]);
   const refresh = useCallback(() => refreshRef.current(), []);

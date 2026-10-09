@@ -41,7 +41,23 @@ supabase functions deploy unlock-fixed-location --project-ref YOUR_PROJECT_REF
 
 此步驟只更新函式，依賴原專案已部署的固定位置 migration 與 RPC。本次前端開發未部署或變更線上 Supabase。
 
-## 本機執行
+## PWA 安裝與離線
+
+使用 HTTPS 正式網址開啟後，支援的 Chrome／Edge／Android 瀏覽器會提供「安裝 DogTracker」入口，也可使用瀏覽器選單安裝。iPhone／iPad 使用 Safari 的「分享 → 加入主畫面」。安裝後以獨立視窗啟動。
+
+Service Worker 預先快取網站 HTML、JavaScript、CSS 與圖示。首次成功連線及完成快取後，可離線重新開啟介面。Supabase 登入、犬隻資料與地圖圖磚不加入離線快取；斷線時顯示離線提示，已開啟頁面的記憶體資料可繼續查看，重新啟動不會恢復犬隻封包。恢復連線後即時追蹤會補讀資料。
+
+新版本就緒時顯示更新提示，由使用者選擇「更新並重新開啟」，避免編輯設定途中自動重新載入。`public/_headers` 讓 Service Worker 與 manifest 重新驗證版本。PWA 僅在正式建置／preview 啟用，開發伺服器不註冊 Service Worker。
+
+```powershell
+npm.cmd run build
+npm.cmd run preview
+npm.cmd run test:pwa
+```
+
+PWA 測試使用正式建置，驗證 manifest、PNG 圖示、Service Worker、離線重新載入、離線導覽及安裝按鈕；離線快取不包含 Supabase API 或地圖圖磚。
+
+## 本機開發
 
 ```powershell
 cd C:\CloudflareWeb\react-dashboard
