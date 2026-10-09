@@ -1,0 +1,2 @@
+[functions.unlock-fixed-location]
+verify_jwt = true
