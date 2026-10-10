@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { dogColor, dogName } from '../tracking/telemetry';
+import { clearLabelOverlap } from '../tracking/labels';
 
 export default function TrackingMap({ dogs, routes, hidden, focus, aliases, showTrails, onDetails, viewKey, syncing = false }) {
   const host = useRef(null), mapRef = useRef(null), layers = useRef(null), fitKey = useRef(null);
@@ -29,6 +30,8 @@ export default function TrackingMap({ dogs, routes, hidden, focus, aliases, show
     const map = mapRef.current, group = layers.current;
     if (!map || !group) return;
     group.clearLayers();
+    const markers = [];
+    const leaders = L.layerGroup().addTo(group);
     const positions = [];
     if (showTrails) for (const route of routes) {
       if (hidden.includes(route.id)) continue;
@@ -44,18 +47,44 @@ export default function TrackingMap({ dogs, routes, hidden, focus, aliases, show
       const label = document.createElement('span');
       label.textContent = dogName(dog.id, aliases);
       const icon = L.divIcon({ className: 'dog-map-icon', html: `<span class="dog-map-dot" style="background:${dogColor(dog.id)}">🐕</span>`, iconSize: [38, 38], iconAnchor: [19, 19] });
-      L.marker(dog.position, { icon, title: dogName(dog.id, aliases), alt: dogName(dog.id, aliases) })
+      const marker = L.marker(dog.position, { icon, title: dogName(dog.id, aliases), alt: dogName(dog.id, aliases) })
         .bindTooltip(label, { permanent: true, direction: 'top', offset: [0, -19], className: 'dog-map-label' })
         .on('click', () => detailsRef.current(dog.id)).addTo(group);
+      markers.push({ marker, color: dogColor(dog.id) });
       positions.push(dog.position);
     }
     const following = dogs.find(dog => dog.id === focus && !dog.stale && dog.position && !hidden.includes(dog.id));
-    if (following) { map.setView(following.position, Math.max(map.getZoom(), 16)); return; }
+    if (following) map.setView(following.position, Math.max(map.getZoom(), 16));
     const key = `${viewKey}:${focus}:${dogs.filter(dog => !dog.stale && !hidden.includes(dog.id)).map(dog => dog.id).join(',')}`;
-    if (positions.length && fitKey.current !== key) {
+    if (!following && positions.length && fitKey.current !== key) {
       map.fitBounds(L.latLngBounds(positions), { padding: [55, 55], maxZoom: 16 });
       fitKey.current = key;
     }
+    function arrangeLabels() {
+      leaders.clearLayers();
+      const placed = [];
+      const mapBox = host.current.getBoundingClientRect();
+      for (const { marker, color } of markers) {
+        const tooltip = marker.getTooltip();
+        tooltip.options.offset = L.point(0, -19);
+        tooltip.update();
+        const element = tooltip.getElement();
+        if (!element) continue;
+        const rect = element.getBoundingClientRect();
+        const shift = clearLabelOverlap(rect, placed);
+        tooltip.options.offset = L.point(0, -19 + shift);
+        tooltip.update();
+        element.style.setProperty('border-color', color);
+        placed.push({ left: rect.left, right: rect.right, top: rect.top + shift, bottom: rect.bottom + shift });
+        if (shift) {
+          const end = map.containerPointToLatLng(L.point((rect.left + rect.right) / 2 - mapBox.left, rect.bottom + shift - mapBox.top));
+          L.polyline([marker.getLatLng(), end], { color, weight: 1, opacity: 0.7, interactive: false }).addTo(leaders);
+        }
+      }
+    }
+    arrangeLabels();
+    map.on('zoomend moveend resize', arrangeLabels);
+    return () => map.off('zoomend moveend resize', arrangeLabels);
   }, [dogs, routes, hidden, focus, aliases, showTrails, viewKey]);
 
   return <div className="map-panel">
