@@ -35,6 +35,7 @@ export function labelLineEnd(point, box) {
 }
 
 export function linesCross(a, b, c, d) {
+  if (Math.hypot(b.x - a.x, b.y - a.y) < 1e-7 || Math.hypot(d.x - c.x, d.y - c.y) < 1e-7) return false;
   const cross = (p, q, r) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
   const abC = cross(a, b, c), abD = cross(a, b, d);
   const cdA = cross(c, d, a), cdB = cross(c, d, b);
@@ -49,6 +50,36 @@ export function linesCross(a, b, c, d) {
   const inside = (p, q, r) => Math.abs(cross(p, q, r)) < epsilon
     && (r.x - p.x) * (r.x - q.x) + (r.y - p.y) * (r.y - q.y) < -epsilon;
   return inside(a, b, c) || inside(a, b, d) || inside(c, d, a) || inside(c, d, b);
+}
+
+export function spreadDogIcons(points) {
+  const placed = [];
+  const display = points.map(origin => {
+    let chosen = origin;
+    search: for (let ring = 0; ring <= points.length + 2; ring++) {
+      for (let step = 0; step < (ring ? 32 : 1); step++) {
+        const angle = -Math.PI / 2 + step * Math.PI / 16;
+        const candidate = { x: origin.x + Math.cos(angle) * ring * 48, y: origin.y + Math.sin(angle) * ring * 48 };
+        if (placed.some(other => Math.abs(other.x - candidate.x) < 44 && Math.abs(other.y - candidate.y) < 44)) continue;
+        chosen = candidate; break search;
+      }
+    }
+    placed.push(chosen);
+    return chosen;
+  });
+  // Keep the separated slots, but exchange assignments to uncross the legs.
+  // Swapping crossing straight segments reduces their total length.
+  for (let pass = 0; pass < points.length * points.length * 10; pass++) {
+    let changed = false;
+    for (let i = 0; i < points.length; i++) for (let j = i + 1; j < points.length; j++) {
+      if (!linesCross(points[i], display[i], points[j], display[j])) continue;
+      if (linesCross(points[i], display[j], points[j], display[i])) continue;
+      [display[i], display[j]] = [display[j], display[i]];
+      changed = true;
+    }
+    if (!changed) break;
+  }
+  return display;
 }
 
 export function placeDogLabel(point, width, height, placed, icons, bounds, lines = []) {

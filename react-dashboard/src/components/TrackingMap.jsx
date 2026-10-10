@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { dogColor, dogName } from '../tracking/telemetry';
-import { placeDogLabel, labelLineEnd } from '../tracking/labels';
+import { placeDogLabel, labelLineEnd, spreadDogIcons } from '../tracking/labels';
 
 export default function TrackingMap({ dogs, routes, hidden, focus, aliases, showTrails, onDetails, viewKey, syncing = false }) {
   const host = useRef(null), mapRef = useRef(null), layers = useRef(null), fitKey = useRef(null);
@@ -53,7 +53,7 @@ export default function TrackingMap({ dogs, routes, hidden, focus, aliases, show
       const marker = L.marker(dog.position, { icon, title: dogName(dog.id, aliases), alt: dogName(dog.id, aliases) })
         .bindTooltip(label, { permanent: true, direction: 'top', offset: [0, -19], className: 'dog-map-label' })
         .on('click', () => detailsRef.current(dog.id)).addTo(group);
-      markers.push({ marker, color: dogColor(dog.id) });
+      markers.push({ marker, color: dogColor(dog.id), position: dog.position });
       positions.push(dog.position);
     }
     const following = dogs.find(dog => dog.id === focus && !dog.stale && dog.position && !hidden.includes(dog.id));
@@ -69,6 +69,24 @@ export default function TrackingMap({ dogs, routes, hidden, focus, aliases, show
       const connections = [];
       const lines = [];
       const mapBox = host.current.getBoundingClientRect();
+      const originals = markers.map(({ position }) => map.latLngToContainerPoint(position));
+      const displayPoints = spreadDogIcons(originals);
+      const drawLine = (start, end, color) => {
+        const points = [start, end].map(point => map.containerPointToLatLng(point));
+        const options = { pane: 'dogConnectors', interactive: false, lineCap: 'round', lineJoin: 'round' };
+        L.polyline(points, { ...options, color: '#fff', weight: 3, opacity: 0.95 }).addTo(leaders);
+        L.polyline(points, { ...options, color, weight: 1, opacity: 1 }).addTo(leaders);
+      };
+      markers.forEach(({ marker, color, position }, index) => {
+        const point = displayPoints[index], origin = originals[index];
+        marker.setLatLng(map.containerPointToLatLng(point));
+        if (Math.hypot(point.x - origin.x, point.y - origin.y) > 1) {
+          lines.push({ start: origin, end: point });
+          drawLine(origin, point, color);
+          L.circleMarker(position, { pane: 'dogConnectors', radius: 3, color, weight: 1,
+            fillColor: color, fillOpacity: 1, interactive: false }).addTo(leaders);
+        }
+      });
       const icons = markers.map(({ marker }) => {
         const p = map.latLngToContainerPoint(marker.getLatLng());
         return { left: p.x - 19, right: p.x + 19, top: p.y - 19, bottom: p.y + 19 };
@@ -93,11 +111,7 @@ export default function TrackingMap({ dogs, routes, hidden, focus, aliases, show
       connections.forEach(({ marker, color, box }) => {
         const start = map.latLngToContainerPoint(marker.getLatLng());
         const end = labelLineEnd(start, box);
-        const points = [start, end]
-          .map(point => map.containerPointToLatLng(point));
-        const options = { pane: 'dogConnectors', interactive: false, lineCap: 'round', lineJoin: 'round' };
-        L.polyline(points, { ...options, color: '#fff', weight: 3, opacity: 0.95 }).addTo(leaders);
-        L.polyline(points, { ...options, color, weight: 1, opacity: 1 }).addTo(leaders);
+        drawLine(start, end, color);
       });
     }
     arrangeLabels();

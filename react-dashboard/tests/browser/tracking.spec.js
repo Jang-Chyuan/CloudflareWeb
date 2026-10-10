@@ -45,7 +45,17 @@ test('clustered labels do not overlap and connectors appear above markers', asyn
   await page.setViewportSize({ width: 1280, height: 900 });
   await login(page, 4);
   await expect(page.locator('.dog-map-label')).toHaveCount(4);
-  await expect(page.locator('.leaflet-dogConnectors-pane path')).toHaveCount(8);
+  await expect.poll(() => page.locator('.leaflet-dogConnectors-pane path').count()).toBeGreaterThanOrEqual(8);
+  await expect.poll(async () => {
+  const icons = await page.locator('.dog-map-icon').evaluateAll(elements => elements.map(element => {
+    const r = element.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+  }));
+  for (let i = 0; i < icons.length; i++) for (let j = i + 1; j < icons.length; j++) {
+    const a = icons[i], b = icons[j];
+    if (!(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top)) return false;
+  }
+  return true;
+  }).toBe(true);
   async function checkLabels() {
     await expect.poll(async () => {
     const boxes = await page.locator('.dog-map-label').evaluateAll(elements => elements.map(element => {
@@ -69,7 +79,7 @@ test('clustered labels do not overlap and connectors appear above markers', asyn
   expect(z.lines).toBeLessThan(z.labels);
   await page.screenshot({ path: 'test-results/clustered-labels-desktop.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect.poll(async () => page.locator('.leaflet-dogConnectors-pane path').count()).toBe(8);
+  await expect.poll(async () => page.locator('.leaflet-dogConnectors-pane path').count()).toBeGreaterThanOrEqual(8);
   await checkLabels();
   await page.screenshot({ path: 'test-results/clustered-labels-mobile.png', fullPage: true });
   expect(failures).toEqual([]);

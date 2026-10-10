@@ -1,6 +1,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { clearLabelOverlap, placeDogLabel, lineHitsBox, labelLineEnd, linesCross } from '../src/tracking/labels.js';
+import { clearLabelOverlap, placeDogLabel, lineHitsBox, labelLineEnd, linesCross, spreadDogIcons } from '../src/tracking/labels.js';
+
+test('nearby icons separate without modifying true positions; separated icons stay put', () => {
+  const points = Array.from({ length: 8 }, (_, i) => ({ x: 200 + i, y: 200 + i }));
+  const saved = JSON.stringify(points), display = spreadDogIcons(points);
+  assert.equal(JSON.stringify(points), saved);
+  for (let i = 0; i < display.length; i++) for (let j = i + 1; j < display.length; j++) {
+    assert.ok(Math.abs(display[i].x - display[j].x) >= 44 || Math.abs(display[i].y - display[j].y) >= 44);
+    assert.equal(linesCross(points[i], display[i], points[j], display[j]), false);
+  }
+  const separate = [{ x: 0, y: 0 }, { x: 100, y: 100 }];
+  assert.deepEqual(spreadDogIcons(separate), separate);
+});
 
 test('crossing and overlapping connectors are rejected; shared origins are allowed', () => {
   assert.equal(linesCross({ x: 0, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }, { x: 10, y: 0 }), true);
