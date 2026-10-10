@@ -11,21 +11,63 @@ export function clearLabelOverlap(rect, placed, gap = 6) {
   }
 }
 
-export function placeDogLabel(point, width, height, placed, icons, bounds) {
+export function lineHitsBox(start, end, box, padding = 3) {
+  let lo = 0, hi = 1;
+  for (const [axis, min, max] of [['x', box.left - padding, box.right + padding], ['y', box.top - padding, box.bottom + padding]]) {
+    const delta = end[axis] - start[axis];
+    if (Math.abs(delta) < 1e-9) {
+      if (start[axis] < min || start[axis] > max) return false;
+    } else {
+      const a = (min - start[axis]) / delta, b = (max - start[axis]) / delta;
+      lo = Math.max(lo, Math.min(a, b)); hi = Math.min(hi, Math.max(a, b));
+      if (lo > hi) return false;
+    }
+  }
+  return true;
+}
+
+export function labelLineEnd(point, box) {
+  const center = { x: (box.left + box.right) / 2, y: (box.top + box.bottom) / 2 };
+  const dx = point.x - center.x, dy = point.y - center.y;
+  const scale = Math.min(dx ? (box.right - box.left) / 2 / Math.abs(dx) : Infinity,
+    dy ? (box.bottom - box.top) / 2 / Math.abs(dy) : Infinity);
+  return { x: center.x + dx * scale, y: center.y + dy * scale };
+}
+
+export function linesCross(a, b, c, d) {
+  const cross = (p, q, r) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  const abC = cross(a, b, c), abD = cross(a, b, d);
+  const cdA = cross(c, d, a), cdB = cross(c, d, b);
+  const epsilon = 1e-7;
+  if (abC * abD < -epsilon && cdA * cdB < -epsilon) return true;
+  // A shared collar position is allowed, but overlapping line segments are not.
+  if ([abC, abD, cdA, cdB].every(value => Math.abs(value) < epsilon)) {
+    const axis = Math.abs(b.x - a.x) > Math.abs(b.y - a.y) ? 'x' : 'y';
+    return Math.min(Math.max(a[axis], b[axis]), Math.max(c[axis], d[axis]))
+      - Math.max(Math.min(a[axis], b[axis]), Math.min(c[axis], d[axis])) > epsilon;
+  }
+  const inside = (p, q, r) => Math.abs(cross(p, q, r)) < epsilon
+    && (r.x - p.x) * (r.x - q.x) + (r.y - p.y) * (r.y - q.y) < -epsilon;
+  return inside(a, b, c) || inside(a, b, d) || inside(c, d, a) || inside(c, d, b);
+}
+
+export function placeDogLabel(point, width, height, placed, icons, bounds, lines = []) {
   const overlaps = (a, b) => a.left < b.right + 6 && a.right + 6 > b.left
     && a.top < b.bottom + 6 && a.bottom + 6 > b.top;
   for (let ring = 0; ring < placed.length + icons.length + 10; ring++) {
-    const distance = 29 + ring * (Math.max(width, height) + 10);
-    const candidates = [
-      [point.x - width / 2, point.y - distance - height, 'top'],
-      [point.x + distance, point.y - height / 2, 'right'],
-      [point.x - width / 2, point.y + distance, 'bottom'],
-      [point.x - distance - width, point.y - height / 2, 'left'],
-    ];
-    for (const [left, top, side] of candidates) {
-      const box = { left, top, right: left + width, bottom: top + height, side };
+    for (let step = 0; step < 32; step++) {
+      const angle = -Math.PI / 2 + step * Math.PI / 16;
+      const dx = Math.cos(angle), dy = Math.sin(angle);
+      const distance = 30 + Math.abs(dx) * width / 2 + Math.abs(dy) * height / 2 + ring * 18;
+      const left = point.x + dx * distance - width / 2, top = point.y + dy * distance - height / 2;
+      const box = { left, top, right: left + width, bottom: top + height, angle };
       if (box.left < bounds.left || box.right > bounds.right || box.top < bounds.top || box.bottom > bounds.bottom) continue;
-      if (![...placed, ...icons].some(other => overlaps(box, other))) return box;
+      if ([...placed, ...icons].some(other => overlaps(box, other))) continue;
+      const end = labelLineEnd(point, box);
+      if (placed.some(other => lineHitsBox(point, end, other))) continue;
+      if (lines.some(line => lineHitsBox(line.start, line.end, box))) continue;
+      if (lines.some(line => linesCross(point, end, line.start, line.end))) continue;
+      return box;
     }
   }
   const box = { left: point.x - width / 2, right: point.x + width / 2, top: point.y - 29 - height, bottom: point.y - 29 };

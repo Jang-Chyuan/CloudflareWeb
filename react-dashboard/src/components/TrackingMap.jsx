@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { dogColor, dogName } from '../tracking/telemetry';
-import { placeDogLabel } from '../tracking/labels';
+import { placeDogLabel, labelLineEnd } from '../tracking/labels';
 
 export default function TrackingMap({ dogs, routes, hidden, focus, aliases, showTrails, onDetails, viewKey, syncing = false }) {
   const host = useRef(null), mapRef = useRef(null), layers = useRef(null), fitKey = useRef(null);
@@ -67,6 +67,7 @@ export default function TrackingMap({ dogs, routes, hidden, focus, aliases, show
       leaders.clearLayers();
       const placed = [];
       const connections = [];
+      const lines = [];
       const mapBox = host.current.getBoundingClientRect();
       const icons = markers.map(({ marker }) => {
         const p = map.latLngToContainerPoint(marker.getLatLng());
@@ -81,19 +82,17 @@ export default function TrackingMap({ dogs, routes, hidden, focus, aliases, show
         const rect = element.getBoundingClientRect();
         const point = map.latLngToContainerPoint(marker.getLatLng());
         const box = placeDogLabel(point, rect.width, rect.height, placed, icons,
-          { left: 8, top: 8, right: mapBox.width - 8, bottom: mapBox.height - 8 });
+          { left: 8, top: 8, right: mapBox.width - 8, bottom: mapBox.height - 8 }, lines);
         tooltip.options.offset = L.point(box.left - (rect.left - mapBox.left), -19 + box.top - (rect.top - mapBox.top));
         tooltip.update();
         element.style.setProperty('border-color', color);
         placed.push(box);
+        lines.push({ start: point, end: labelLineEnd(point, box) });
         connections.push({ marker, color, box: placed.at(-1) });
       }
       connections.forEach(({ marker, color, box }) => {
         const start = map.latLngToContainerPoint(marker.getLatLng());
-        const end = box.side === 'top' ? L.point((box.left + box.right) / 2, box.bottom)
-          : box.side === 'bottom' ? L.point((box.left + box.right) / 2, box.top)
-          : box.side === 'left' ? L.point(box.right, (box.top + box.bottom) / 2)
-          : L.point(box.left, (box.top + box.bottom) / 2);
+        const end = labelLineEnd(start, box);
         const points = [start, end]
           .map(point => map.containerPointToLatLng(point));
         const options = { pane: 'dogConnectors', interactive: false, lineCap: 'round', lineJoin: 'round' };
