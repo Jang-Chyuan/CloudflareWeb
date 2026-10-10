@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from './lib/supabaseClient';
 import { useAuth, useCloudTracking, usePreferences } from './hooks/useCloudTracking';
-import { buildDogs, buildRoutes, formatTime } from './tracking/telemetry';
+import { buildDogs, buildRoutes } from './tracking/telemetry';
 import Login from './components/Login';
 import TrackingMap from './components/TrackingMap';
 import DogCard from './components/DogCard';
@@ -49,8 +49,6 @@ function Dashboard({ session }) {
     {cloud.warning && <div className="warning banner" role="status">{cloud.warning}</div>}
     <main className="dashboard-main">
       {tab === 'live' ? <>
-        <div className="section-heading"><div><span className="eyebrow">LIVE TRACKING</span><h1>犬隻即時追蹤</h1><p>每 30 秒更新雲端資料 · 最後同步 {formatTime(cloud.lastSync)}</p></div><button className="secondary" disabled={cloud.loading} onClick={cloud.refresh}>{cloud.loading ? `同步中 ${cloud.progress.toLocaleString()} 筆…` : '↻ 重新整理'}</button></div>
-        <div className="summary-strip"><div><span className="online-dot" /><strong>{dogs.filter(dog => !dog.stale).length}</strong><span>可顯示位置</span></div><div><strong>{dogs.length}</strong><span>隻狗</span></div><div><strong>{cloud.masters.length}</strong><span>授權 Master</span></div><div className="summary-source">☁ 雲端資料</div></div>
         <div className="tracking-layout"><section className="tracking-map-area">
           <div className="map-toolbar"><div className="map-title"><span className="online-dot" /> Slave 地圖</div><div className="map-options">
             <label className="check-label"><input type="checkbox" checked={preferences.trails} onChange={e => save({ trails: e.target.checked })} />移動路徑</label>
