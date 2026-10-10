@@ -1,6 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { clearLabelOverlap } from '../src/tracking/labels.js';
+import { clearLabelOverlap, placeDogLabel } from '../src/tracking/labels.js';
+
+test('four clustered dogs use different sides without overlapping labels or icons', () => {
+  const point = { x: 200, y: 200 }, placed = [];
+  const icons = [{ left: 181, right: 219, top: 181, bottom: 219 }];
+  const bounds = { left: 0, top: 0, right: 400, bottom: 400 };
+  for (let i = 0; i < 4; i++) placed.push(placeDogLabel(point, 60, 28, placed, icons, bounds));
+  assert.deepEqual(placed.map(box => box.side), ['top', 'right', 'bottom', 'left']);
+});
 
 test('browser DOMRect prototype getters are used for collision detection', () => {
   class BrowserRect {

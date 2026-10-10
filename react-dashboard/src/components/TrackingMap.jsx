@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { dogColor, dogName } from '../tracking/telemetry';
-import { clearLabelOverlap } from '../tracking/labels';
+import { placeDogLabel } from '../tracking/labels';
 
 export default function TrackingMap({ dogs, routes, hidden, focus, aliases, showTrails, onDetails, viewKey, syncing = false }) {
   const host = useRef(null), mapRef = useRef(null), layers = useRef(null), fitKey = useRef(null);
@@ -13,6 +13,9 @@ export default function TrackingMap({ dogs, routes, hidden, focus, aliases, show
   useEffect(() => {
     const map = L.map(host.current, { zoomControl: false }).setView([23.7, 121], 7);
     mapRef.current = map;
+    const connectorPane = map.createPane('dogConnectors');
+    connectorPane.style.zIndex = '625';
+    connectorPane.style.pointerEvents = 'none';
     L.control.zoom({ position: 'bottomright' }).addTo(map);
     L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
     let failures = 0;
@@ -63,7 +66,12 @@ export default function TrackingMap({ dogs, routes, hidden, focus, aliases, show
     function arrangeLabels() {
       leaders.clearLayers();
       const placed = [];
+      const connections = [];
       const mapBox = host.current.getBoundingClientRect();
+      const icons = markers.map(({ marker }) => {
+        const p = map.latLngToContainerPoint(marker.getLatLng());
+        return { left: p.x - 19, right: p.x + 19, top: p.y - 19, bottom: p.y + 19 };
+      });
       for (const { marker, color } of markers) {
         const tooltip = marker.getTooltip();
         tooltip.options.offset = L.point(0, -19);
@@ -71,16 +79,27 @@ export default function TrackingMap({ dogs, routes, hidden, focus, aliases, show
         const element = tooltip.getElement();
         if (!element) continue;
         const rect = element.getBoundingClientRect();
-        const shift = clearLabelOverlap(rect, placed);
-        tooltip.options.offset = L.point(0, -19 + shift);
+        const point = map.latLngToContainerPoint(marker.getLatLng());
+        const box = placeDogLabel(point, rect.width, rect.height, placed, icons,
+          { left: 8, top: 8, right: mapBox.width - 8, bottom: mapBox.height - 8 });
+        tooltip.options.offset = L.point(box.left - (rect.left - mapBox.left), -19 + box.top - (rect.top - mapBox.top));
         tooltip.update();
         element.style.setProperty('border-color', color);
-        placed.push({ left: rect.left, right: rect.right, top: rect.top + shift, bottom: rect.bottom + shift });
-        if (shift) {
-          const end = map.containerPointToLatLng(L.point((rect.left + rect.right) / 2 - mapBox.left, rect.bottom + shift - mapBox.top));
-          L.polyline([marker.getLatLng(), end], { color, weight: 1, opacity: 0.7, interactive: false }).addTo(leaders);
-        }
+        placed.push(box);
+        connections.push({ marker, color, box: placed.at(-1) });
       }
+      connections.forEach(({ marker, color, box }) => {
+        const start = map.latLngToContainerPoint(marker.getLatLng());
+        const end = box.side === 'top' ? L.point((box.left + box.right) / 2, box.bottom)
+          : box.side === 'bottom' ? L.point((box.left + box.right) / 2, box.top)
+          : box.side === 'left' ? L.point(box.right, (box.top + box.bottom) / 2)
+          : L.point(box.left, (box.top + box.bottom) / 2);
+        const points = [start, end]
+          .map(point => map.containerPointToLatLng(point));
+        const options = { pane: 'dogConnectors', interactive: false, lineCap: 'round', lineJoin: 'round' };
+        L.polyline(points, { ...options, color: '#fff', weight: 3, opacity: 0.95 }).addTo(leaders);
+        L.polyline(points, { ...options, color, weight: 1, opacity: 1 }).addTo(leaders);
+      });
     }
     arrangeLabels();
     map.on('zoomend moveend resize', arrangeLabels);

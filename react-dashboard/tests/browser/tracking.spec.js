@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 const owner = '00000000-0000-4000-8000-000000000010';
-async function mockCloud(page) {
+async function mockCloud(page, clustered = false) {
   const now = Date.now();
   const user = { id: owner, email: 'test@example.com', aud: 'authenticated', role: 'authenticated', app_metadata: {}, user_metadata: {}, created_at: new Date(now).toISOString() };
   const token = `${Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url')}.${Buffer.from(JSON.stringify({ sub: owner, role: 'authenticated', exp: Math.floor(now / 1000) + 3600 })).toString('base64url')}.test_signature`;
@@ -11,7 +11,8 @@ async function mockCloud(page) {
     payload: { lat, lon: 121565000, speed: 1250, hdop: 150, satellites: 9, batteryPercentage: 82,
       batteryValid: 1, activityScore: 650, activityValid: 1, usbPresent: 0 }, rssi: -91, snr: 5,
   });
-  const rows = [packet(1, 2, 45000), packet(2, 2, 15000, 25033200), packet(3, 9, 240000)];
+  const rows = clustered ? [4, 6, 8, 108].map((slave, i) => packet(i + 1, slave, 15000, 25033000 + i * 15))
+    : [packet(1, 2, 45000), packet(2, 2, 15000, 25033200), packet(3, 9, 240000)];
   const requested = [];
   await page.route('http://127.0.0.1:54321/**', async route => {
     const url = new URL(route.request().url()); requested.push(url.pathname);
@@ -28,14 +29,51 @@ async function mockCloud(page) {
   return requested;
 }
 
-async function login(page) {
+async function login(page, dogCount = 2) {
   await page.goto('/');
   await page.getByLabel('Email', { exact: true }).fill('test@example.com');
   await page.getByLabel('密碼', { exact: true }).fill('test_password');
   await page.getByRole('button', { name: '登入', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '犬隻即時追蹤' })).toBeVisible();
-  await expect(page.locator('.dog-card')).toHaveCount(2);
+  await expect(page.getByRole('button', { name: '登出', exact: true })).toBeVisible();
+  await expect(page.locator('.dog-card')).toHaveCount(dogCount);
 }
+
+test('clustered labels do not overlap and connectors appear above markers', async ({ page }) => {
+  const failures = [];
+  page.on('pageerror', error => failures.push(error.message));
+  await mockCloud(page, true);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await login(page, 4);
+  await expect(page.locator('.dog-map-label')).toHaveCount(4);
+  await expect(page.locator('.leaflet-dogConnectors-pane path')).toHaveCount(8);
+  async function checkLabels() {
+    await expect.poll(async () => {
+    const boxes = await page.locator('.dog-map-label').evaluateAll(elements => elements.map(element => {
+      const r = element.getBoundingClientRect();
+      return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+    }));
+    for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i], b = boxes[j];
+      if (!(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top)) return false;
+    }
+    return true;
+    }).toBe(true);
+  }
+  await checkLabels();
+  const z = await page.locator('.leaflet-dogConnectors-pane').evaluate(element => ({
+    lines: Number(getComputedStyle(element).zIndex),
+    markers: Number(getComputedStyle(document.querySelector('.leaflet-marker-pane')).zIndex),
+    labels: Number(getComputedStyle(document.querySelector('.leaflet-tooltip-pane')).zIndex),
+  }));
+  expect(z.lines).toBeGreaterThan(z.markers);
+  expect(z.lines).toBeLessThan(z.labels);
+  await page.screenshot({ path: 'test-results/clustered-labels-desktop.png', fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(async () => page.locator('.leaflet-dogConnectors-pane path').count()).toBe(8);
+  await checkLabels();
+  await page.screenshot({ path: 'test-results/clustered-labels-mobile.png', fullPage: true });
+  expect(failures).toEqual([]);
+});
 
 test('login, Slave map, detail, history playback and logout without phone location', async ({ page }) => {
   const failures = [];
