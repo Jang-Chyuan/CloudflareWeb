@@ -2,6 +2,17 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { clearLabelOverlap } from '../src/tracking/labels.js';
 
+test('browser DOMRect prototype getters are used for collision detection', () => {
+  class BrowserRect {
+    get left() { return 10; }
+    get right() { return 110; }
+    get top() { return 200; }
+    get bottom() { return 225; }
+  }
+  assert.equal(clearLabelOverlap(new BrowserRect(),
+    [{ left: 10, right: 110, top: 200, bottom: 225 }]), -31);
+});
+
 test('nearby and identical dog labels clear every previously placed label', () => {
   const placed = [];
   for (let i = 0; i < 8; i++) {
