@@ -34,6 +34,45 @@ export function useCloudTracking(owner) {
   const [error, setError] = useState('');
   const [warning, setWarning] = useState('');
   const refreshRef = useRef(() => {});
+  const fixedRefreshRef = useRef(() => {});
+
+  // Settings must not wait for a potentially large telemetry download.
+  useEffect(() => {
+    if (!owner || !supabase) return;
+    let active = true, busy = false, pending = false, controller;
+    setFixedLocations([]);
+    setWarning('');
+    async function refreshFixed() {
+      if (!active || document.visibilityState === 'hidden' || !navigator.onLine) return;
+      if (busy) { pending = true; return; }
+      busy = true;
+      controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      try {
+        const fixed = await readFixedLocations(supabase, null, controller.signal);
+        if (!active || controller.signal.aborted) return;
+        setWarning(fixed.warning);
+        if (!fixed.warning) setFixedLocations(fixed.locations);
+      } catch {
+        if (active) setWarning('固定位置設定讀取失敗；保留上次成功讀取的設定。');
+      } finally {
+        clearTimeout(timeout); busy = false;
+        if (active && pending) { pending = false; refreshFixed(); }
+      }
+    }
+    fixedRefreshRef.current = refreshFixed;
+    refreshFixed();
+    const interval = setInterval(refreshFixed, 10000);
+    const resume = () => { if (document.visibilityState === 'visible') refreshFixed(); };
+    document.addEventListener('visibilitychange', resume);
+    window.addEventListener('online', resume);
+    return () => {
+      active = false; controller?.abort(); clearInterval(interval);
+      fixedRefreshRef.current = () => {};
+      document.removeEventListener('visibilitychange', resume);
+      window.removeEventListener('online', resume);
+    };
+  }, [owner]);
 
   useEffect(() => {
     if (!owner || !supabase) return;
@@ -54,10 +93,9 @@ export function useCloudTracking(owner) {
         const start = full ? now - DAY : Math.max(now - DAY, cursor - 300000);
         const incoming = await fetchTelemetry({ client: supabase, masterIds: ids, start, end: now,
           signal: controller.signal, onProgress: count => { if (active) setProgress(count); } });
-        const fixed = await readFixedLocations(supabase, ids, controller.signal);
         if (!active || controller.signal.aborted) return;
         setMasters(ids); setRows(old => mergeRows(full ? [] : old.filter(row => ids.includes(row.master_id)), incoming, now));
-        setFixedLocations(fixed.locations); setWarning(fixed.warning); setLastSync(now);
+        setLastSync(now);
         cursor = now; knownMasters = ids.join(',');
         if (full) reconciledAt = now;
       } catch (failure) {
@@ -80,7 +118,8 @@ export function useCloudTracking(owner) {
     };
   }, [owner]);
   const refresh = useCallback(() => refreshRef.current(), []);
-  return { rows, masters, fixedLocations, loading, progress, lastSync, error, warning, refresh };
+  const refreshFixed = useCallback(() => fixedRefreshRef.current(), []);
+  return { rows, masters, fixedLocations, loading, progress, lastSync, error, warning, refresh, refreshFixed };
 }
 
 export function usePreferences(owner) {

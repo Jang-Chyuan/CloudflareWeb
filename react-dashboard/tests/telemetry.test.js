@@ -7,8 +7,20 @@ async function load(file) {
   return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);
 }
 const { parseTelemetry, buildDogs, buildRoutes, activityHistory, coordinate, DAY } = await load('src/tracking/telemetry.js');
-const { dateRange, fetchTelemetry, mergeRows } = await load('src/tracking/cloud.js');
+const { dateRange, fetchTelemetry, mergeRows, readFixedLocations } = await load('src/tracking/cloud.js');
 const now = Date.parse('2026-10-09T04:30:00Z');
+test('fixed locations load before telemetry Master discovery and report failures', async () => {
+  const settings = [4, 6, 8, 108].map(slave_id => ({ slave_id, master_id: 5, enabled: true, latitude: 24, longitude: 121 }));
+  let failure = null;
+  const client = { from(table) {
+    assert.equal(table, 'slave_fixed_locations');
+    return { select() { return { abortSignal: async () => ({ data: settings, error: failure }) }; } };
+  } };
+  const signal = new AbortController().signal;
+  assert.deepEqual((await readFixedLocations(client, [], signal)).locations, settings);
+  failure = { message: 'network unavailable' };
+  assert.ok((await readFixedLocations(client, null, signal)).warning);
+});
 function raw(time, values = {}, slaveId = 2, masterId = 5, id = '00000000-0000-4000-8000-000000000001') {
   return { event_id: id, master_id: masterId, slave_id: slaveId, received_at: new Date(time).toISOString(),
     payload: { lat: 25033000, lon: 121565000, speed: 1250, hdop: 150, activityScore: 650, activityValid: 1,

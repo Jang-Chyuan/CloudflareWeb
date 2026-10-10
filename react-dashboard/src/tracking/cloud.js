@@ -45,10 +45,10 @@ export async function fetchTelemetry({ client, masterIds, start, end, signal, on
 }
 
 export async function readFixedLocations(client, masterIds, signal) {
-  if (!masterIds.length) return { locations: [], warning: '' };
+  // RLS limits rows to this account's authorized Masters, as in DogTracker.
   const { data, error } = await client.from('slave_fixed_locations')
-    .select('slave_id,master_id,name,latitude,longitude,enabled,updated_at').in('master_id', masterIds).abortSignal(signal);
-  return error ? { locations: [], warning: '固定位置設定讀取失敗；目前顯示 GPS 位置。' } : { locations: data ?? [], warning: '' };
+    .select('slave_id,master_id,name,latitude,longitude,enabled,updated_at').abortSignal(signal);
+  return error ? { locations: [], warning: '固定位置設定讀取失敗；保留上次成功讀取的設定。' } : { locations: data ?? [], warning: '' };
 }
 
 export function mergeRows(old, incoming, now) {

@@ -22,6 +22,11 @@ function FixedLocation({ dog, location, owner, onSaved }) {
   const [name, setName] = useState(location?.name ?? ''), [latitude, setLatitude] = useState(location?.latitude ?? '');
   const [longitude, setLongitude] = useState(location?.longitude ?? ''), [enabled, setEnabled] = useState(location?.enabled ?? true);
   const active = useRef(true);
+  useEffect(() => {
+    if (editing) return;
+    setName(location?.name ?? ''); setLatitude(location?.latitude ?? '');
+    setLongitude(location?.longitude ?? ''); setEnabled(location?.enabled ?? true);
+  }, [location, editing]);
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   useEffect(() => {
     if (!unlock) return;

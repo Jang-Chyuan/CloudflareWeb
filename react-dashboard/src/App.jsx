@@ -73,7 +73,7 @@ function Dashboard({ session }) {
     </main>
     {selectedDog && <DogDetails key={`${selectedDog.id}:${details?.history ? 'history' : 'live'}`} dog={selectedDog} rows={details?.history ? details.rows : cloud.rows} now={details?.history ? details.now : now} history={!!details?.history}
       aliases={preferences.aliases} onAlias={(id, alias) => save({ aliases: { ...preferences.aliases, [id]: alias } })} onClose={closeDetails}
-      fixedLocations={cloud.fixedLocations} owner={session.user.id} onRefresh={cloud.refresh} />}
+      fixedLocations={cloud.fixedLocations} owner={session.user.id} onRefresh={cloud.refreshFixed} />}
   </div>;
 }
 
