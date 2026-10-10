@@ -99,3 +99,27 @@ test('cloud pagination preserves cursor microseconds and does not stop on a shor
   assert.equal(rows.length, 2); assert.equal(calls, 3); assert.match(filters[0], /04:29:59\.123456Z/);
   assert.equal(mergeRows(rows, [rows[0]], now).length, 2);
 });
+
+test('newest-first sync publishes a page before fetching older data and preserves it on failure', async () => {
+  const latest = { ...raw(now - 1000), received_at: '2026-10-09T04:29:59.123456Z' };
+  const pages = [], filters = [], orders = [];
+  let calls = 0;
+  const client = { from() {
+    const query = {};
+    for (const method of ['select', 'in', 'gte', 'lt', 'limit']) query[method] = () => query;
+    query.order = (field, options) => { orders.push(options.ascending); return query; };
+    query.or = value => { filters.push(value); return query; };
+    query.abortSignal = async () => {
+      if (calls++ === 0) return { data: [latest], error: null };
+      assert.equal(pages.length, 1);
+      return { data: null, error: { message: 'interrupted' } };
+    };
+    return query;
+  } };
+  await assert.rejects(fetchTelemetry({ client, masterIds: [5], start: now - DAY, end: now,
+    signal: new AbortController().signal, newestFirst: true, onPage: page => pages.push(page) }));
+  assert.equal(pages[0][0].id, latest.event_id);
+  assert.ok(orders.every(ascending => ascending === false));
+  assert.match(filters[0], /received_at\.lt\.2026-10-09T04:29:59\.123456Z/);
+  assert.match(filters[0], /event_id\.lt\./);
+});

@@ -89,10 +89,18 @@ export function useCloudTracking(owner) {
         const now = Date.now();
         const ids = await listMasters(supabase, owner, controller.signal);
         if (!active) return;
+        setMasters(ids);
+        setRows(old => old.filter(row => ids.includes(row.master_id)));
         const full = force || !cursor || now - reconciledAt >= 600000 || ids.join(',') !== knownMasters;
         const start = full ? now - DAY : Math.max(now - DAY, cursor - 300000);
         const incoming = await fetchTelemetry({ client: supabase, masterIds: ids, start, end: now,
-          signal: controller.signal, onProgress: count => { if (active) setProgress(count); } });
+          signal: controller.signal, newestFirst: true,
+          onProgress: count => { if (active) setProgress(count); },
+          onPage: page => {
+            if (active && !controller.signal.aborted) {
+              setRows(old => mergeRows(old.filter(row => ids.includes(row.master_id)), page, now));
+            }
+          } });
         if (!active || controller.signal.aborted) return;
         setMasters(ids); setRows(old => mergeRows(full ? [] : old.filter(row => ids.includes(row.master_id)), incoming, now));
         setLastSync(now);

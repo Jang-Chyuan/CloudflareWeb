@@ -18,7 +18,7 @@ export async function listMasters(client, owner, signal) {
 
 // Page until empty: Supabase can impose a limit below the requested page size.
 // Keep timestamp microseconds and UUID in the cursor rather than using offsets.
-export async function fetchTelemetry({ client, masterIds, start, end, signal, onProgress = () => {} }) {
+export async function fetchTelemetry({ client, masterIds, start, end, signal, onProgress = () => {}, newestFirst = false, onPage = () => {} }) {
   if (!masterIds.length) return [];
   const records = [];
   const seen = new Set();
@@ -27,20 +27,23 @@ export async function fetchTelemetry({ client, masterIds, start, end, signal, on
     if (signal.aborted) throw new DOMException('已取消', 'AbortError');
     let query = client.from('dog_telemetry').select(FIELDS).in('master_id', masterIds)
       .gte('received_at', new Date(start).toISOString()).lt('received_at', new Date(end).toISOString())
-      .order('received_at').order('event_id').limit(1000);
-    if (cursor) query = query.or(`received_at.gt.${cursor.time},and(received_at.eq.${cursor.time},event_id.gt.${cursor.id})`);
+      .order('received_at', { ascending: !newestFirst }).order('event_id', { ascending: !newestFirst }).limit(1000);
+    const direction = newestFirst ? 'lt' : 'gt';
+    if (cursor) query = query.or(`received_at.${direction}.${cursor.time},and(received_at.eq.${cursor.time},event_id.${direction}.${cursor.id})`);
     const { data, error } = await query.abortSignal(signal);
     if (error) throw new Error('無法讀取犬隻資料，請確認網路及 dog_telemetry 讀取權限。');
     if (!data?.length) return records;
+    const page = [];
     for (const raw of data) {
       const record = parseTelemetry(raw);
-      if (!seen.has(record.id)) { seen.add(record.id); records.push(record); }
+      if (!seen.has(record.id)) { seen.add(record.id); records.push(record); page.push(record); }
     }
     const last = data[data.length - 1];
     if (cursor?.time === last.received_at && cursor?.id === last.event_id) throw new Error('資料分頁未前進，已停止讀取。');
     cursor = { time: last.received_at, id: last.event_id };
     if (records.length > 250000) throw new Error('查詢資料超過 25 萬筆，請縮小日期範圍或選擇單一 Master。');
     onProgress(records.length);
+    onPage(page);
   }
 }
 
