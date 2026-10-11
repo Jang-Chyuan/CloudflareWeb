@@ -29,13 +29,14 @@ async function mockCloud(page, clustered = false) {
   return requested;
 }
 
-async function login(page, dogCount = 2) {
+async function login(page, dogCount = 2, showAll = true) {
   await page.goto('/');
   await page.getByLabel('Email', { exact: true }).fill('test@example.com');
   await page.getByLabel('密碼', { exact: true }).fill('test_password');
   await page.getByRole('button', { name: '登入', exact: true }).click();
   await expect(page.getByRole('button', { name: '登出', exact: true })).toBeVisible();
   await expect(page.locator('.dog-card')).toHaveCount(dogCount);
+  if (showAll) await page.getByRole('button', { name: '顯示全部', exact: true }).click();
 }
 
 test('clustered labels do not overlap and connectors appear above markers', async ({ page }) => {
@@ -43,7 +44,11 @@ test('clustered labels do not overlap and connectors appear above markers', asyn
   page.on('pageerror', error => failures.push(error.message));
   await mockCloud(page, true);
   await page.setViewportSize({ width: 1280, height: 900 });
-  await login(page, 4);
+  await login(page, 4, false);
+  await expect(page.locator('.dog-map-icon')).toHaveCount(1);
+  await expect(page.locator('.dog-map-label')).toHaveCount(1);
+  await expect.poll(() => page.locator('.dog-map-label').allTextContents()).toEqual(['狗 108']);
+  await page.getByRole('button', { name: '顯示全部', exact: true }).click();
   await expect(page.locator('.dog-map-label')).toHaveCount(4);
   await expect.poll(() => page.locator('.leaflet-dogConnectors-pane path').count()).toBeGreaterThanOrEqual(8);
   await expect.poll(async () => {
@@ -97,15 +102,17 @@ test('login, Slave map, detail, history playback and logout without phone locati
   });
   await page.setViewportSize({ width: 1440, height: 960 });
   await login(page);
-  await expect(page.locator('.dog-map-icon')).toHaveCount(1);
+  await expect(page.locator('.dog-map-icon')).toHaveCount(2);
+  await expect(page.locator('.dog-map-stale')).toHaveCount(1);
+  await expect(page.locator('.dog-map-label').filter({ hasText: '狗 9' })).toContainText('× 未更新');
   const dog = page.locator('.dog-card').filter({ hasText: '狗 2' });
   await expect(dog).toContainText('12.5'); await expect(dog).toContainText('82%');
   await dog.getByRole('button', { name: '地圖跟隨', exact: true }).click();
   await expect(dog).toContainText('取消跟隨');
   await dog.getByRole('button', { name: '隱藏狗 2位置' }).click();
-  await expect(page.locator('.dog-map-icon')).toHaveCount(0);
-  await dog.getByRole('button', { name: '顯示狗 2位置' }).click();
   await expect(page.locator('.dog-map-icon')).toHaveCount(1);
+  await dog.getByRole('button', { name: '顯示狗 2位置' }).click();
+  await expect(page.locator('.dog-map-icon')).toHaveCount(2);
   await page.screenshot({ path: 'test-results/slave-desktop.png', fullPage: true });
   await dog.locator('.dog-title').click();
   const dialog = page.getByRole('dialog'); await expect(dialog).toBeVisible();
@@ -140,6 +147,14 @@ test('mobile layout stays within viewport and login failure stays visible', asyn
   await login(page);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: 'test-results/slave-mobile.png', fullPage: true });
+  const fixedToggle = page.getByRole('button', { name: '固定位置：開啟', exact: true });
+  await expect(fixedToggle).toHaveAttribute('aria-pressed', 'true');
+  await fixedToggle.click();
+  await expect(page.getByRole('button', { name: '固定位置：關閉', exact: true })).toHaveAttribute('aria-pressed', 'false');
+  await page.reload();
+  await expect(page.getByRole('button', { name: '固定位置：關閉', exact: true })).toHaveAttribute('aria-pressed', 'false');
+  await page.getByRole('button', { name: '固定位置：關閉', exact: true }).click();
+  await expect(page.getByRole('button', { name: '固定位置：開啟', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.locator('.dog-card').filter({ hasText: '狗 2' }).locator('.dog-title').click();
   await expect(page.getByRole('dialog')).toBeVisible();
   const box = await page.getByRole('dialog').boundingBox(); expect(box.width).toBeLessThan(391);

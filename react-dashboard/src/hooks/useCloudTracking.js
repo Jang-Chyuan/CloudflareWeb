@@ -131,17 +131,20 @@ export function useCloudTracking(owner) {
 }
 
 export function usePreferences(owner) {
+  const defaultHidden = Array.from({ length: 255 }, (_, i) => i + 1).filter(id => id !== 108);
   const key = `dogtracker-web-preferences:${owner}`;
   const [preferences, setPreferences] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(key)) ?? {};
       return {
         aliases: saved.aliases && typeof saved.aliases === 'object' ? saved.aliases : {},
-        hidden: Array.isArray(saved.hidden) ? saved.hidden.filter(Number.isInteger) : [],
+        hidden: saved.visibilityVersion === 2 && Array.isArray(saved.hidden) ? saved.hidden.filter(Number.isInteger) : defaultHidden,
+        visibilityVersion: 2,
+        applyFixed: saved.applyFixed !== false,
         trails: saved.trails !== false,
         windowMinutes: [3, 10, 30, 60, 360, 1440].includes(saved.windowMinutes) ? saved.windowMinutes : 10,
       };
-    } catch { return { aliases: {}, hidden: [], trails: true, windowMinutes: 10 }; }
+    } catch { return { aliases: {}, hidden: defaultHidden, visibilityVersion: 2, applyFixed: true, trails: true, windowMinutes: 10 }; }
   });
   const save = patch => setPreferences(old => {
     const value = { ...old, ...patch };

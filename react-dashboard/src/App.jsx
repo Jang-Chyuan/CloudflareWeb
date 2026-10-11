@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from './lib/supabaseClient';
 import { useAuth, useCloudTracking, usePreferences } from './hooks/useCloudTracking';
-import { buildDogs, buildRoutes } from './tracking/telemetry';
+import { buildDogs, buildRoutes, retainDogPositions } from './tracking/telemetry';
 import Login from './components/Login';
 import TrackingMap from './components/TrackingMap';
 import DogCard from './components/DogCard';
@@ -23,7 +23,15 @@ function Dashboard({ session }) {
   const [now, setNow] = useState(Date.now()), [signingOut, setSigningOut] = useState(false), [authError, setAuthError] = useState('');
   const [search, setSearch] = useState('');
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 10000); return () => clearInterval(timer); }, []);
-  const dogs = useMemo(() => buildDogs(cloud.rows, cloud.fixedLocations, now), [cloud.rows, cloud.fixedLocations, now]);
+  const lastDogs = useRef([]);
+  const lastGpsDogs = useRef([]);
+  const gpsDogs = useMemo(() => retainDogPositions(buildDogs(cloud.rows, [], now),
+    lastGpsDogs.current.filter(dog => cloud.masters.includes(dog.masterId)), now), [cloud.rows, cloud.masters, now]);
+  useEffect(() => { lastGpsDogs.current = gpsDogs; }, [gpsDogs]);
+  const dogs = useMemo(() => retainDogPositions(preferences.applyFixed ? buildDogs(cloud.rows, cloud.fixedLocations, now) : gpsDogs,
+    lastDogs.current.filter(dog => cloud.masters.includes(dog.masterId)),
+    now, !preferences.applyFixed), [cloud.rows, cloud.fixedLocations, cloud.masters, preferences.applyFixed, gpsDogs, now]);
+  useEffect(() => { lastDogs.current = dogs; }, [dogs]);
   const routes = useMemo(() => buildRoutes(cloud.rows, now - preferences.windowMinutes * 60000, now), [cloud.rows, preferences.windowMinutes, now]);
   const filtered = dogs.filter(dog => `${preferences.aliases[dog.id] ?? ''} ${dog.id} Master ${dog.masterId}`.toLowerCase().includes(search.toLowerCase()));
   const selectedDog = details?.history ? details.dog : dogs.find(dog => dog.id === details?.id);
@@ -51,13 +59,15 @@ function Dashboard({ session }) {
       {tab === 'live' ? <>
         <div className="tracking-layout"><section className="tracking-map-area">
           <div className="map-toolbar"><div className="map-title"><span className="online-dot" /> Slave 地圖</div><div className="map-options">
+            <button className="secondary" aria-pressed={preferences.applyFixed} onClick={() => save({ applyFixed: !preferences.applyFixed })}
+              title="依 ML 室內／窗邊判定或 USB 狀態套用固定位置">固定位置：{preferences.applyFixed ? '開啟' : '關閉'}</button>
             <label className="check-label"><input type="checkbox" checked={preferences.trails} onChange={e => save({ trails: e.target.checked })} />移動路徑</label>
             <label className="sr-only" htmlFor="route-window">路徑時間範圍</label><select id="route-window" value={preferences.windowMinutes} onChange={e => save({ windowMinutes: Number(e.target.value) })}>
               {[3, 10, 30, 60, 360, 1440].map(minutes => <option key={minutes} value={minutes}>過去 {minutes < 60 ? `${minutes} 分鐘` : `${minutes / 60} 小時`}</option>)}</select>
             <button className="text-button" onClick={() => { setFocus(null); save({ hidden: [] }); }}>顯示全部</button>
           </div></div>
           <TrackingMap dogs={dogs} routes={routes} hidden={preferences.hidden} focus={focus} aliases={preferences.aliases} showTrails={preferences.trails} onDetails={id => setDetails({ id })} viewKey="live" syncing={cloud.loading} />
-          <div className="map-footer"><span>🐕 點選犬隻圖示查看詳細資訊</span><span>位置超過 3 分鐘未更新即隱藏</span></div>
+          <div className="map-footer"><span>🐕 點選犬隻圖示查看詳細資訊</span><span>× 超過 3 分鐘未更新，保留最後位置</span></div>
         </section><aside className="dog-list">
           <div className="dog-list-heading"><h2>犬隻 <span>{dogs.length}</span></h2><span>最近 24 小時</span></div>
           <label className="sr-only" htmlFor="dog-search">搜尋犬隻或 Master</label><input id="dog-search" className="dog-search" type="search" placeholder="搜尋犬隻或 Master…" value={search} onChange={e => setSearch(e.target.value)} />

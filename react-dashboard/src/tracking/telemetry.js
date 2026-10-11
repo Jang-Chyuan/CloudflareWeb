@@ -70,18 +70,42 @@ export function buildDogs(rows, fixedLocations = [], now = Date.now()) {
     const communicating = now - packet.track_at <= LIVE_WINDOW;
     const fixed = setting && coordinate(setting.latitude, setting.longitude) && reason && (communicating || charging) ? setting : null;
     const noFix = !coordinate(packet.slave_lat, packet.slave_lon);
-    const position = fixed ? coordinate(fixed.latitude, fixed.longitude) : lastFix ? coordinate(lastFix.slave_lat, lastFix.slave_lon) : null;
+    const savedFallback = !fixed && !lastFix && setting && coordinate(setting.latitude, setting.longitude) ? setting : null;
+    const position = fixed ? coordinate(fixed.latitude, fixed.longitude) : lastFix ? coordinate(lastFix.slave_lat, lastFix.slave_lon)
+      : savedFallback ? coordinate(savedFallback.latitude, savedFallback.longitude) : null;
     return {
       id, masterId: packet.master_id, packet, position, environment,
       lastPacketAt: packet.track_at, lastPositionAt: fixed ? packet.track_at : lastFix?.track_at ?? null,
       retained: !fixed && noFix && !!lastFix,
-      stale: !position || (!communicating && !(fixed && charging)),
+      savedFallback: !!savedFallback,
+      stale: (!fixed && noFix) || !!savedFallback || !position || !communicating || now - (fixed ? packet.track_at : lastFix?.track_at ?? 0) > LIVE_WINDOW,
       status: !communicating ? '未收到新資料' : noFix && !fixed ? '有通訊／GPS 未定位' : '有通訊／定位正常',
       speed: fixed || noFix ? null : packet.speed_kmh,
       battery: packet.battery_valid ? packet.battery_percentage : null,
-      fixedName: fixed?.name, fixedReason: fixed ? reason : null,
+      fixedName: fixed?.name ?? savedFallback?.name, fixedReason: fixed ? reason : null,
+      positionSource: fixed || savedFallback ? 'fixed' : 'gps',
     };
   }).sort((a, b) => a.id - b.id);
+}
+
+// Never bridge missing fixes, a >2 minute gap, or a change of Master.
+export function retainDogPositions(dogs, previous, now, fixedDisabled = false) {
+  const old = new Map(previous.map(dog => [dog.id, dog]));
+  const current = dogs.map(dog => {
+    const cached = old.get(dog.id);
+    old.delete(dog.id);
+    if (!cached?.position || dog.fixedReason || (dog.position && (fixedDisabled || dog.lastPositionAt >= cached.lastPositionAt))) return dog;
+    return { ...dog, position: cached.position, lastPositionAt: cached.lastPositionAt,
+      positionSource: cached.positionSource,
+      retained: true, savedFallback: false,
+      lastDisplayed: fixedDisabled && cached.positionSource === 'fixed',
+      stale: fixedDisabled && cached.positionSource === 'fixed' || dog.stale || now - cached.lastPositionAt > LIVE_WINDOW, speed: null,
+      fixedName: cached.fixedName, fixedReason: null };
+  });
+  for (const dog of old.values()) {
+    if (dog.position) current.push({ ...dog, stale: true, retained: true, speed: null, status: '未收到新資料', fixedReason: null });
+  }
+  return current.sort((a, b) => a.id - b.id);
 }
 
 // Never bridge missing fixes, a >2 minute gap, or a change of Master.

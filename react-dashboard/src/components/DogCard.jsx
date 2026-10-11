@@ -21,7 +21,9 @@ export default function DogCard({ dog, aliases, hidden, following, onFollow, onT
     <dl className="dog-times"><div><dt>最後封包</dt><dd>{formatTime(dog.lastPacketAt)}</dd></div><div><dt>有效定位</dt><dd>{formatTime(dog.lastPositionAt)}</dd></div></dl>
     <p className="environment">目前環境：{environmentLabel(dog.environment, now)}</p>
     {dog.fixedReason && <p className="fixed-note">設定位置：{dog.fixedName} · {dog.fixedReason}</p>}
-    {dog.stale && <p className="warning">尚無可顯示位置，或超過 3 分鐘未收到封包。</p>}
-    <div className="dog-actions"><button disabled={dog.stale || !dog.position || hidden} className={following ? 'active-follow' : ''} onClick={onFollow}>{following ? '取消跟隨' : '地圖跟隨'}</button><button onClick={onDetails}>詳細資訊 ↗</button></div>
+    {dog.savedFallback && <p className="warning">顯示設定位置：{dog.fixedName}；尚未取得有效定位或近期固定位置判定。</p>}
+    {dog.lastDisplayed && <p className="warning">× 未更新／最後顯示位置；固定位置套用已關閉。</p>}
+    {dog.stale && <p className="warning">{dog.position ? dog.retained ? '× GPS 未更新，顯示最後有效位置。' : '× 位置未更新，顯示最後位置。' : '尚無可顯示位置。'}</p>}
+    <div className="dog-actions"><button disabled={!dog.position || hidden} className={following ? 'active-follow' : ''} onClick={onFollow}>{following ? '取消跟隨' : '地圖跟隨'}</button><button onClick={onDetails}>詳細資訊 ↗</button></div>
   </article>;
 }

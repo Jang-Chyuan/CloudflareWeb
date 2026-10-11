@@ -6,9 +6,24 @@ async function load(file) {
   const result = buildSync({ entryPoints: [file], bundle: true, format: 'esm', platform: 'node', write: false });
   return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);
 }
-const { parseTelemetry, buildDogs, buildRoutes, activityHistory, coordinate, DAY } = await load('src/tracking/telemetry.js');
+const { parseTelemetry, buildDogs, buildRoutes, activityHistory, coordinate, DAY, retainDogPositions } = await load('src/tracking/telemetry.js');
 const { dateRange, fetchTelemetry, mergeRows, readFixedLocations } = await load('src/tracking/cloud.js');
 const now = Date.parse('2026-10-09T04:30:00Z');
+test('expired fixed location keeps the last displayed position and timestamp without inventing fresh data', () => {
+  const previous = [{ id: 108, masterId: 5, position: [24, 121], lastPositionAt: now - 240000, fixedName: '家' }];
+  const current = [{ id: 108, masterId: 5, position: null, lastPositionAt: null, stale: true }];
+  const dog = retainDogPositions(current, previous, now)[0];
+  assert.deepEqual(dog.position, [24, 121]);
+  assert.equal(dog.lastPositionAt, now - 240000); assert.equal(dog.stale, true);
+  assert.equal(dog.retained, true);
+  assert.equal(retainDogPositions([], previous, now)[0].stale, true);
+  assert.equal(retainDogPositions(current, [], now)[0].position, null);
+  const disabled = retainDogPositions(current, [{ ...previous[0], positionSource: 'fixed' }], now, true)[0];
+  assert.deepEqual(disabled.position, [24, 121]); assert.equal(disabled.lastDisplayed, true);
+  assert.equal(disabled.stale, true);
+  const fresh = { ...current[0], position: [25, 122], lastPositionAt: now, stale: false };
+  assert.deepEqual(retainDogPositions([fresh], previous, now)[0].position, [25, 122]);
+});
 test('fixed locations load before telemetry Master discovery and report failures', async () => {
   const settings = [4, 6, 8, 108].map(slave_id => ({ slave_id, master_id: 5, enabled: true, latitude: 24, longitude: 121 }));
   let failure = null;
@@ -40,7 +55,7 @@ test('latest packet has no fix: keep previous coordinate but current battery and
   const dogs = buildDogs([older, latest], [], now);
   assert.equal(dogs.length, 1); assert.deepEqual(dogs[0].position, [25.033, 121.565]);
   assert.equal(dogs[0].masterId, 7); assert.equal(dogs[0].battery, 63); assert.equal(dogs[0].speed, null);
-  assert.equal(dogs[0].retained, true); assert.equal(dogs[0].stale, false);
+  assert.equal(dogs[0].retained, true); assert.equal(dogs[0].stale, true);
   assert.equal(dogs[0].lastPositionAt, now - 30000);
 });
 
@@ -58,6 +73,17 @@ test('fixed charging position requires explicit USB reading and enabled setting'
   assert.deepEqual(charging.position, [24, 121]); assert.equal(charging.speed, null);
   const unknown = buildDogs([parseTelemetry(raw(now))], settings, now)[0];
   assert.deepEqual(unknown.position, [25.033, 121.565]);
+});
+
+test('enabled saved position without GPS is explicitly unconfirmed and stale', () => {
+  const rows = [parseTelemetry(raw(now - 240000, { lat: 0, lon: 0 }))];
+  const settings = [{ slave_id: 2, enabled: true, latitude: 24, longitude: 121, name: '家' }];
+  const dog = buildDogs(rows, settings, now)[0];
+  assert.deepEqual(dog.position, [24, 121]); assert.equal(dog.stale, true);
+  assert.equal(dog.savedFallback, true); assert.equal(dog.lastPositionAt, null);
+  assert.equal(dog.fixedReason, null);
+  assert.equal(buildDogs(rows, [], now)[0].position, null);
+  assert.equal(buildDogs(rows, [{ ...settings[0], enabled: false }], now)[0].position, null);
 });
 
 test('route breaks at missing fixes, long gaps and changes of Master', () => {
