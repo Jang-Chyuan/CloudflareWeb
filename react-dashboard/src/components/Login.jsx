@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { supabase, supabaseConfigError } from '../lib/supabaseClient';
 
 export default function Login({ authError }) {
-  const [email, setEmail] = useState(''), [password, setPassword] = useState('');
+  const [email, setEmail] = useState('monsterant.go@gmail.com'), [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   async function login(event) {
     event.preventDefault();
