@@ -55,7 +55,7 @@ test('clustered labels do not overlap and connectors appear above markers', asyn
   await login(page, 4, false);
   await expect(page.locator('.dog-map-icon')).toHaveCount(1);
   await expect(page.locator('.dog-map-label')).toHaveCount(1);
-  await expect.poll(() => page.locator('.dog-map-label').allTextContents()).toEqual(['狗 108']);
+  await expect.poll(() => page.locator('.dog-map-label').allTextContents()).toEqual(['狗 108:按我看資訊']);
   await page.getByRole('button', { name: '顯示全部', exact: true }).click();
   await expect(page.locator('.dog-map-label')).toHaveCount(4);
   await expect.poll(() => page.locator('.leaflet-dogConnectors-pane path').count()).toBeGreaterThanOrEqual(8);
