@@ -6,9 +6,58 @@ async function load(file) {
   const result = buildSync({ entryPoints: [file], bundle: true, format: 'esm', platform: 'node', write: false });
   return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);
 }
-const { parseTelemetry, buildDogs, buildRoutes, activityHistory, coordinate, DAY, retainDogPositions } = await load('src/tracking/telemetry.js');
-const { dateRange, fetchTelemetry, mergeRows, readFixedLocations } = await load('src/tracking/cloud.js');
+const { parseTelemetry, buildDogs, buildRoutes, activityHistory, coordinate, DAY, retainDogPositions, positionLabel, fixedPositionReason } = await load('src/tracking/telemetry.js');
+const { dateRange, fetchTelemetry, mergeRows, readFixedLocations, fetchLastGpsFix } = await load('src/tracking/cloud.js');
+const { readPositionCache, savePositionCache } = await load('src/tracking/positionCache.js');
 const now = Date.parse('2026-10-09T04:30:00Z');
+test('Supabase last GPS lookup searches beyond 24h and preserves historical position time', async () => {
+  const historic = raw(now - 3 * DAY, {}, 108, 7);
+  const filters = [];
+  const client = { from() {
+    const query = {};
+    for (const method of ['select', 'in', 'eq', 'lt', 'not', 'or', 'order', 'range']) {
+      query[method] = (...args) => { filters.push([method, ...args]); return query; };
+    }
+    query.abortSignal = async () => ({ data: [historic], error: null });
+    return query;
+  } };
+  const fix = await fetchLastGpsFix(client, [7], 108, new AbortController().signal, now);
+  assert.ok(filters.some(filter => filter[0] === 'eq' && filter[1] === 'slave_id' && filter[2] === 108));
+  const dog = buildDogs([parseTelemetry(raw(now, { lat: 0, lon: 0 }, 108, 7))], [], now, true, [fix])[0];
+  assert.deepEqual(dog.position, [25.033, 121.565]); assert.equal(dog.lastPositionAt, now - 3 * DAY);
+  assert.equal(dog.stale, true); assert.match(positionLabel(dog), /^× 未更新／最後顯示位置，10\/06/);
+});
+test('last displayed position survives reload per account and never restores a charging state', () => {
+  const values = new Map();
+  const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+  savePositionCache(storage, 'owner1', [{ id: 108, masterId: 7, position: [24, 121], lastPositionAt: now,
+    lastPacketAt: now, positionSource: 'fixed', charging: true, packet: { raw: 'not stored' } }]);
+  const rows = readPositionCache(storage, 'owner1');
+  assert.deepEqual(rows[0].position, [24, 121]); assert.equal(rows[0].lastPositionAt, now);
+  assert.equal(rows[0].stale, true); assert.equal(rows[0].charging, false);
+  assert.deepEqual(rows[0].packet, {}); assert.deepEqual(readPositionCache(storage, 'owner2'), []);
+  const restored = retainDogPositions([{ id: 108, masterId: 7, position: null, stale: true }], rows, now + 60000)[0];
+  assert.deepEqual(restored.position, [24, 121]); assert.match(positionLabel(restored), /^× 未更新／最後顯示位置，/);
+});
+test('USB always applies fixed coordinates and charging label regardless of the switch', () => {
+  const settings = [{ slave_id: 108, enabled: true, latitude: 24, longitude: 121, name: '家' }];
+  for (const enabled of [true, false]) {
+    const dog = buildDogs([parseTelemetry(raw(now, { lat: 0, lon: 0, usbPresent: 1 }, 108))], settings, now, enabled)[0];
+    assert.deepEqual(dog.position, [24, 121]);
+    assert.equal(positionLabel(dog), '充電中');
+    assert.equal(dog.fixedReason, '充電中');
+  }
+  const rows = [parseTelemetry(raw(now, { lat: 0, lon: 0, usbPresent: 0 }, 108))];
+  assert.equal(positionLabel(buildDogs(rows, settings, now, true)[0]), '× 未更新／最後顯示位置，時間未知');
+  assert.equal(buildDogs(rows, settings, now, false)[0].position, null);
+});
+test('only recent indoor inference and USB apply fixed locations; window never does', () => {
+  assert.equal(fixedPositionReason(false, { environment: 'indoor', observedAt: now - 30000 }, now), '推論室內');
+  assert.equal(fixedPositionReason(false, { environment: 'window', observedAt: now }, now), null);
+  assert.equal(fixedPositionReason(false, { environment: 'indoor', observedAt: now - 120001 }, now), null);
+  assert.equal(fixedPositionReason(true, null, now), '充電中');
+  assert.equal(fixedPositionReason(true, null, now, false), '充電中');
+});
 test('expired fixed location keeps the last displayed position and timestamp without inventing fresh data', () => {
   const previous = [{ id: 108, masterId: 5, position: [24, 121], lastPositionAt: now - 240000, fixedName: '家' }];
   const current = [{ id: 108, masterId: 5, position: null, lastPositionAt: null, stale: true }];
@@ -79,8 +128,8 @@ test('enabled saved position without GPS is explicitly unconfirmed and stale', (
   const rows = [parseTelemetry(raw(now - 240000, { lat: 0, lon: 0 }))];
   const settings = [{ slave_id: 2, enabled: true, latitude: 24, longitude: 121, name: '家' }];
   const dog = buildDogs(rows, settings, now)[0];
-  assert.deepEqual(dog.position, [24, 121]); assert.equal(dog.stale, true);
-  assert.equal(dog.savedFallback, true); assert.equal(dog.lastPositionAt, null);
+  assert.equal(dog.position, null); assert.equal(dog.stale, true);
+  assert.equal(dog.savedFallback, false); assert.equal(dog.lastPositionAt, null);
   assert.equal(dog.fixedReason, null);
   assert.equal(buildDogs(rows, [], now)[0].position, null);
   assert.equal(buildDogs(rows, [{ ...settings[0], enabled: false }], now)[0].position, null);

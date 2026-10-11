@@ -14,6 +14,7 @@ async function mockCloud(page, clustered = false) {
   const rows = clustered ? [4, 6, 8, 108].map((slave, i) => packet(i + 1, slave, 15000, 25033000 + i * 15))
     : [packet(1, 2, 45000), packet(2, 2, 15000, 25033200), packet(3, 9, 240000)];
   const requested = [];
+  const names = [];
   await page.route('http://127.0.0.1:54321/**', async route => {
     const url = new URL(route.request().url()); requested.push(url.pathname);
     let body = {};
@@ -23,6 +24,13 @@ async function mockCloud(page, clustered = false) {
     else if (url.pathname.endsWith('/device_members')) body = Number(url.searchParams.get('offset')) > 0 ? [] : [{ gateway_id: 'master_5', slave_id: null }];
     else if (url.pathname.endsWith('/dog_telemetry')) body = url.searchParams.has('or') ? [] : rows;
     else if (url.pathname.endsWith('/slave_fixed_locations')) body = [];
+    else if (url.pathname.endsWith('/slave_names')) {
+      if (route.request().method() === 'POST') {
+        const value = route.request().postDataJSON();
+        names.splice(0, names.length, { slave_id: value.slave_id, name: value.name });
+        body = names[0];
+      } else body = names;
+    }
     else if (url.pathname.endsWith('/unlock-fixed-location')) return route.fulfill({ status: 403, json: { error: 'Invalid password' } });
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
@@ -117,6 +125,10 @@ test('login, Slave map, detail, history playback and logout without phone locati
   await dog.locator('.dog-title').click();
   const dialog = page.getByRole('dialog'); await expect(dialog).toBeVisible();
   await expect(dialog).toContainText('-91 dBm'); await expect(dialog).toContainText('過去 24 小時活動量');
+  await dialog.getByLabel('名稱（儲存在 Supabase）', { exact: true }).fill('小白');
+  await dialog.getByRole('button', { name: '儲存名稱', exact: true }).click();
+  await expect(dialog.getByRole('status')).toContainText('名稱已儲存至 Supabase');
+  await expect(page.locator('.dog-map-label').filter({ hasText: '小白' })).toHaveCount(1);
   await dialog.getByRole('button', { name: '修改設定' }).click();
   await dialog.getByLabel('帳號密碼', { exact: true }).fill('incorrect_test_password');
   await dialog.getByRole('button', { name: '解鎖', exact: true }).click();
@@ -147,14 +159,15 @@ test('mobile layout stays within viewport and login failure stays visible', asyn
   await login(page);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: 'test-results/slave-mobile.png', fullPage: true });
-  const fixedToggle = page.getByRole('button', { name: '固定位置：開啟', exact: true });
+  await expect(page.getByRole('button', { name: /^ML 推論：/ })).toHaveCount(0);
+  const fixedToggle = page.getByRole('button', { name: 'ML 室內推論：開啟', exact: true });
   await expect(fixedToggle).toHaveAttribute('aria-pressed', 'true');
   await fixedToggle.click();
-  await expect(page.getByRole('button', { name: '固定位置：關閉', exact: true })).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByRole('button', { name: 'ML 室內推論：關閉', exact: true })).toHaveAttribute('aria-pressed', 'false');
   await page.reload();
-  await expect(page.getByRole('button', { name: '固定位置：關閉', exact: true })).toHaveAttribute('aria-pressed', 'false');
-  await page.getByRole('button', { name: '固定位置：關閉', exact: true }).click();
-  await expect(page.getByRole('button', { name: '固定位置：開啟', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'ML 室內推論：關閉', exact: true })).toHaveAttribute('aria-pressed', 'false');
+  await page.getByRole('button', { name: 'ML 室內推論：關閉', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'ML 室內推論：開啟', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.locator('.dog-card').filter({ hasText: '狗 2' }).locator('.dog-title').click();
   await expect(page.getByRole('dialog')).toBeVisible();
   const box = await page.getByRole('dialog').boundingBox(); expect(box.width).toBeLessThan(391);

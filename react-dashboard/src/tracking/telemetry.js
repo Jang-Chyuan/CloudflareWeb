@@ -50,7 +50,15 @@ export function environments(rows, now) {
   return latest;
 }
 
-export function buildDogs(rows, fixedLocations = [], now = Date.now()) {
+export function fixedPositionReason(charging, environment, now, enabled = true) {
+  if (charging) return '充電中';
+  if (!enabled) return null;
+  if (environment?.environment === 'indoor' && now >= environment.observedAt
+    && now - environment.observedAt <= 120000) return '推論室內';
+  return null;
+}
+
+export function buildDogs(rows, fixedLocations = [], now = Date.now(), applyFixed = true, historicalFixes = []) {
   const groups = new Map();
   for (const row of rows) {
     if (row.track_at > now || now - row.track_at > DAY) continue;
@@ -61,24 +69,25 @@ export function buildDogs(rows, fixedLocations = [], now = Date.now()) {
   return [...groups].map(([id, samples]) => {
     samples.sort((a, b) => b.track_at - a.track_at || b.received_at - a.received_at || b.id.localeCompare(a.id));
     const packet = samples[0];
-    const lastFix = samples.find(row => coordinate(row.slave_lat, row.slave_lon));
+    const lastFix = samples.find(row => coordinate(row.slave_lat, row.slave_lon))
+      ?? historicalFixes.find(row => row.slave_id === id && row.track_at <= now && coordinate(row.slave_lat, row.slave_lon));
     const environment = results.get(id) ?? null;
     const setting = fixedLocations.find(value => value.slave_id === id && value.enabled);
     const charging = packet.usb_present === 1;
-    const recentEnvironment = environment && now - environment.observedAt >= 0 && now - environment.observedAt <= 120000;
-    const reason = charging ? '充電（USB 已連接）' : recentEnvironment ? { indoor: '室內', window: '窗邊' }[environment.environment] : null;
+    const reason = fixedPositionReason(charging, environment, now, applyFixed);
     const communicating = now - packet.track_at <= LIVE_WINDOW;
-    const fixed = setting && coordinate(setting.latitude, setting.longitude) && reason && (communicating || charging) ? setting : null;
+    const fixed = setting && coordinate(setting.latitude, setting.longitude) && reason && (charging || communicating) ? setting : null;
     const noFix = !coordinate(packet.slave_lat, packet.slave_lon);
-    const savedFallback = !fixed && !lastFix && setting && coordinate(setting.latitude, setting.longitude) ? setting : null;
-    const position = fixed ? coordinate(fixed.latitude, fixed.longitude) : lastFix ? coordinate(lastFix.slave_lat, lastFix.slave_lon)
-      : savedFallback ? coordinate(savedFallback.latitude, savedFallback.longitude) : null;
+    const savedFallback = null;
+    const position = fixed ? coordinate(fixed.latitude, fixed.longitude) : savedFallback ? coordinate(savedFallback.latitude, savedFallback.longitude)
+      : lastFix ? coordinate(lastFix.slave_lat, lastFix.slave_lon) : null;
     return {
       id, masterId: packet.master_id, packet, position, environment,
-      lastPacketAt: packet.track_at, lastPositionAt: fixed ? packet.track_at : lastFix?.track_at ?? null,
+      lastPacketAt: packet.track_at, lastPositionAt: fixed ? packet.track_at : savedFallback ? null : lastFix?.track_at ?? null,
+      charging,
       retained: !fixed && noFix && !!lastFix,
       savedFallback: !!savedFallback,
-      stale: (!fixed && noFix) || !!savedFallback || !position || !communicating || now - (fixed ? packet.track_at : lastFix?.track_at ?? 0) > LIVE_WINDOW,
+      stale: noFix || !!savedFallback || !position || !communicating || now - (fixed ? packet.track_at : lastFix?.track_at ?? 0) > LIVE_WINDOW,
       status: !communicating ? '未收到新資料' : noFix && !fixed ? '有通訊／GPS 未定位' : '有通訊／定位正常',
       speed: fixed || noFix ? null : packet.speed_kmh,
       battery: packet.battery_valid ? packet.battery_percentage : null,
@@ -86,6 +95,13 @@ export function buildDogs(rows, fixedLocations = [], now = Date.now()) {
       positionSource: fixed || savedFallback ? 'fixed' : 'gps',
     };
   }).sort((a, b) => a.id - b.id);
+}
+
+export function positionLabel(dog) {
+  if (dog.charging) return '充電中';
+  if (dog.stale || dog.lastDisplayed) return `× 未更新／最後顯示位置，${Number.isFinite(dog.lastPositionAt) ? formatTime(dog.lastPositionAt) : '時間未知'}${dog.fixedReason ? `／${dog.fixedReason}` : ''}`;
+  if (dog.fixedReason === '推論室內') return '推論室內／固定位置';
+  return '';
 }
 
 // Never bridge missing fixes, a >2 minute gap, or a change of Master.
@@ -98,12 +114,12 @@ export function retainDogPositions(dogs, previous, now, fixedDisabled = false) {
     return { ...dog, position: cached.position, lastPositionAt: cached.lastPositionAt,
       positionSource: cached.positionSource,
       retained: true, savedFallback: false,
-      lastDisplayed: fixedDisabled && cached.positionSource === 'fixed',
+      lastDisplayed: true,
       stale: fixedDisabled && cached.positionSource === 'fixed' || dog.stale || now - cached.lastPositionAt > LIVE_WINDOW, speed: null,
       fixedName: cached.fixedName, fixedReason: null };
   });
   for (const dog of old.values()) {
-    if (dog.position) current.push({ ...dog, stale: true, retained: true, speed: null, status: '未收到新資料', fixedReason: null });
+    if (dog.position) current.push({ ...dog, stale: true, retained: true, lastDisplayed: true, charging: false, speed: null, status: '未收到新資料', fixedReason: null });
   }
   return current.sort((a, b) => a.id - b.id);
 }
@@ -164,4 +180,4 @@ export function formatTime(value) {
 }
 
 export const dogColor = id => ['#E85F5C', '#397E9B', '#247A61', '#AC7B24', '#8B63A9', '#D17947'][(id - 1) % 6];
-export const dogName = (id, aliases) => aliases[id]?.trim() ? `${aliases[id].trim()}（Slave ${id}）` : `狗 ${id}`;
+export const dogName = (id, aliases) => aliases[id]?.trim() ? `${aliases[id].trim()}(${id})` : `狗 ${id}`;

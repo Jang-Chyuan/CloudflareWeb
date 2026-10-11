@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { fetchTelemetry, listMasters, mergeRows, readFixedLocations } from '../tracking/cloud';
-import { DAY } from '../tracking/telemetry';
+import { fetchTelemetry, listMasters, mergeRows, readFixedLocations, fetchLastGpsFix } from '../tracking/cloud';
+import { DAY, buildDogs } from '../tracking/telemetry';
 
 export function useAuth() {
   const [session, setSession] = useState(null);
@@ -28,12 +28,35 @@ export function useCloudTracking(owner) {
   const [rows, setRows] = useState([]);
   const [masters, setMasters] = useState([]);
   const [fixedLocations, setFixedLocations] = useState([]);
+  const [historicalFixes, setHistoricalFixes] = useState([]);
+  const [gpsWarning, setGpsWarning] = useState('');
+  const gpsQueryTimes = useRef(new Map());
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [lastSync, setLastSync] = useState(null);
   const [error, setError] = useState('');
   const [warning, setWarning] = useState('');
   const refreshRef = useRef(() => {});
+  useEffect(() => { gpsQueryTimes.current.clear(); setHistoricalFixes([]); setGpsWarning(''); }, [owner]);
+  useEffect(() => {
+    if (!owner || !supabase || !masters.length) return;
+    let active = true;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    const now = Date.now();
+    const candidates = buildDogs(rows, [], now).filter(dog => dog.stale && !dog.charging
+      && now - (gpsQueryTimes.current.get(dog.id) ?? 0) >= 60000);
+    Promise.all(candidates.map(async dog => {
+      try {
+        const fix = await fetchLastGpsFix(supabase, masters, dog.id, controller.signal, now);
+        if (active) {
+          gpsQueryTimes.current.set(dog.id, now);
+          if (fix) setHistoricalFixes(old => [...old.filter(row => row.slave_id !== dog.id), fix]);
+        }
+      } catch (failure) { if (active) setGpsWarning(failure.message); }
+    })).finally(() => clearTimeout(timeout));
+    return () => { active = false; controller.abort(); clearTimeout(timeout); };
+  }, [owner, rows, masters]);
   const fixedRefreshRef = useRef(() => {});
 
   // Settings must not wait for a potentially large telemetry download.
@@ -127,7 +150,8 @@ export function useCloudTracking(owner) {
   }, [owner]);
   const refresh = useCallback(() => refreshRef.current(), []);
   const refreshFixed = useCallback(() => fixedRefreshRef.current(), []);
-  return { rows, masters, fixedLocations, loading, progress, lastSync, error, warning, refresh, refreshFixed };
+  return { rows, masters, fixedLocations, historicalFixes: historicalFixes.filter(row => masters.includes(row.master_id)),
+    loading, progress, lastSync, error, warning: warning || gpsWarning, refresh, refreshFixed };
 }
 
 export function usePreferences(owner) {
@@ -140,11 +164,12 @@ export function usePreferences(owner) {
         aliases: saved.aliases && typeof saved.aliases === 'object' ? saved.aliases : {},
         hidden: saved.visibilityVersion === 2 && Array.isArray(saved.hidden) ? saved.hidden.filter(Number.isInteger) : defaultHidden,
         visibilityVersion: 2,
+        showML: saved.showML === true,
         applyFixed: saved.applyFixed !== false,
         trails: saved.trails !== false,
         windowMinutes: [3, 10, 30, 60, 360, 1440].includes(saved.windowMinutes) ? saved.windowMinutes : 10,
       };
-    } catch { return { aliases: {}, hidden: defaultHidden, visibilityVersion: 2, applyFixed: true, trails: true, windowMinutes: 10 }; }
+    } catch { return { aliases: {}, hidden: defaultHidden, visibilityVersion: 2, showML: false, applyFixed: true, trails: true, windowMinutes: 10 }; }
   });
   const save = patch => setPreferences(old => {
     const value = { ...old, ...patch };

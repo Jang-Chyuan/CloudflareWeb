@@ -1,6 +1,27 @@
-import { parseTelemetry, DAY } from './telemetry';
+import { parseTelemetry, DAY, coordinate } from './telemetry';
 
 const FIELDS = 'event_id,master_id,slave_id,seq,received_at,payload,rssi,snr,upload_source,phone_received_at';
+export async function fetchLastGpsFix(client, masterIds, slaveId, signal, now = Date.now()) {
+  if (!masterIds.length) return null;
+  let offset = 0;
+  for (;;) {
+    const { data, error } = await client.from('dog_telemetry').select(FIELDS)
+      .in('master_id', masterIds).eq('slave_id', slaveId)
+      .lt('received_at', new Date(now).toISOString())
+      .not('payload->>lat', 'is', null).not('payload->>lon', 'is', null)
+      .or('payload->>lat.neq.0,payload->>lon.neq.0')
+      .order('received_at', { ascending: false }).order('event_id', { ascending: false })
+      .range(offset, offset + 99).abortSignal(signal);
+    if (error) throw new Error(`Slave ${slaveId} 最後有效 GPS 查詢失敗。`);
+    if (!data?.length) return null;
+    for (const raw of data) {
+      const row = parseTelemetry(raw);
+      if (row.track_at <= now && coordinate(row.slave_lat, row.slave_lon)) return row;
+    }
+    offset += data.length;
+    if (offset >= 5000) throw new Error(`Slave ${slaveId} GPS 資料格式異常，請檢查歷史封包。`);
+  }
+}
 export async function listMasters(client, owner, signal) {
   const masters = new Set();
   for (let offset = 0; ; ) {

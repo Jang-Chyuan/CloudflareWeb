@@ -1,5 +1,5 @@
 import React from 'react';
-import { dogColor, dogName, formatTime } from '../tracking/telemetry';
+import { dogColor, dogName, formatTime, positionLabel } from '../tracking/telemetry';
 import { environmentLabel } from '../ml/Environment';
 
 export function Metrics({ dog }) {
@@ -9,17 +9,17 @@ export function Metrics({ dog }) {
   </div>;
 }
 
-export default function DogCard({ dog, aliases, hidden, following, onFollow, onToggle, onDetails, now }) {
+export default function DogCard({ dog, aliases, hidden, following, onFollow, onToggle, onDetails, now, showML = false }) {
   const name = dogName(dog.id, aliases);
   return <article className={`dog-card ${following ? 'following' : ''} ${hidden ? 'dog-hidden' : ''}`}>
     <div className="dog-card-top"><span className="dog-avatar" style={{ background: `${dogColor(dog.id)}18`, color: dogColor(dog.id) }}>🐕</span>
       <button className="dog-title" onClick={onDetails}><strong>{name}</strong><span>經 Master {dog.masterId} · 雲端</span></button>
       <button className="icon-button" aria-label={`${hidden ? '顯示' : '隱藏'}${name}位置`} aria-pressed={!hidden} onClick={onToggle}>{hidden ? '◌' : '◎'}</button>
     </div>
-    <div className="dog-status"><i className={dog.stale ? 'offline-dot' : 'online-dot'} />{dog.status}{dog.retained && <span>最後有效位置</span>}</div>
+    <div className="dog-status"><i className={dog.stale ? 'offline-dot' : 'online-dot'} />{positionLabel(dog) || dog.status}{dog.retained && <span>最後有效位置</span>}</div>
     <Metrics dog={dog} />
     <dl className="dog-times"><div><dt>最後封包</dt><dd>{formatTime(dog.lastPacketAt)}</dd></div><div><dt>有效定位</dt><dd>{formatTime(dog.lastPositionAt)}</dd></div></dl>
-    <p className="environment">目前環境：{environmentLabel(dog.environment, now)}</p>
+    {showML && <p className="environment">ML 推論：{environmentLabel(dog.environment, now)}</p>}
     {dog.fixedReason && <p className="fixed-note">設定位置：{dog.fixedName} · {dog.fixedReason}</p>}
     {dog.savedFallback && <p className="warning">顯示設定位置：{dog.fixedName}；尚未取得有效定位或近期固定位置判定。</p>}
     {dog.lastDisplayed && <p className="warning">× 未更新／最後顯示位置；固定位置套用已關閉。</p>}

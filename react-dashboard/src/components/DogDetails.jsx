@@ -72,7 +72,7 @@ function FixedLocation({ dog, location, owner, onSaved }) {
   return <section className="detail-section"><h3>固定位置設定</h3>
     {!editing ? <><p>{location ? `${location.name} · ${location.enabled ? '已啟用' : '未啟用'}` : '尚未設定固定位置。'}</p>
       {location && <p>{location.latitude}, {location.longitude}</p>}
-      <p>USB 充電或近期判斷為室內／窗邊時，使用已設定的位置。</p>
+      <p>USB 充電一律使用已啟用的固定座標；「ML 室內推論」開關只控制室內推論，窗邊不套用。</p>
       <button className="secondary" onClick={() => { setEditing(true); setError(''); }}>修改設定</button></>
       : !unlock ? <form onSubmit={authorize}><p>輸入目前帳號密碼，驗證後可修改此犬隻的設定。</p>
         <label>帳號密碼<input type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required disabled={busy} /></label>
@@ -86,9 +86,12 @@ function FixedLocation({ dog, location, owner, onSaved }) {
   </section>;
 }
 
-export default function DogDetails({ dog, rows, now, aliases, onAlias, onClose, fixedLocations, owner, onRefresh, history = false }) {
+export default function DogDetails({ dog, rows, now, aliases, onAlias, onClose, fixedLocations, owner, onRefresh, history = false, showML = false }) {
   const panel = useRef(null);
   const [alias, setAlias] = useState(aliases[dog.id] ?? '');
+  const [aliasBusy, setAliasBusy] = useState(false), [aliasError, setAliasError] = useState(''), [aliasSaved, setAliasSaved] = useState(false);
+  const aliasDirty = useRef(false);
+  useEffect(() => { if (!aliasDirty.current) setAlias(aliases[dog.id] ?? ''); }, [aliases, dog.id]);
   const [raw, setRaw] = useState(false);
   useEffect(() => {
     const previous = document.activeElement;
@@ -113,10 +116,16 @@ export default function DogDetails({ dog, rows, now, aliases, onAlias, onClose, 
         <div><dt>衛星</dt><dd>{packet.satellites ?? '—'}</dd></div><div><dt>HDOP</dt><dd>{packet.hdop ?? '—'}</dd></div>
         <div><dt>RSSI</dt><dd>{packet.rssi == null ? '—' : `${packet.rssi} dBm`}</dd></div><div><dt>SNR</dt><dd>{packet.snr == null ? '—' : `${packet.snr} dB`}</dd></div>
         <div><dt>USB</dt><dd>{packet.usb_present === 1 ? '已連接' : packet.usb_present === 0 ? '未連接' : '未知'}</dd></div><div><dt>活動量</dt><dd>{packet.activity_valid && packet.activity != null ? packet.activity.toFixed(3) : '尚無有效資料'}</dd></div></dl>
-      <section className="detail-section"><h3>目前環境</h3><p>{environmentLabel(dog.environment, now)}</p>{dog.environment && <><p>{environmentEvidence(dog.environment)}</p><p>判斷區間：{formatTime(dog.environment.windowStart)} 至 {formatTime(dog.environment.windowEnd)} · {dog.environment.samples} 筆取樣</p></>}</section>
+      {showML && <section className="detail-section"><h3>ML 推論結果</h3><p>{environmentLabel(dog.environment, now)}</p>{dog.environment && <><p>{environmentEvidence(dog.environment)}</p><p>判斷區間：{formatTime(dog.environment.windowStart)} 至 {formatTime(dog.environment.windowEnd)} · {dog.environment.samples} 筆取樣</p></>}</section>}
       <ActivityChart rows={rows} id={dog.id} now={now} />
       {!history && <FixedLocation dog={dog} owner={owner} location={fixedLocations.find(row => row.slave_id === dog.id)} onSaved={onRefresh} />}
-      <section className="detail-section"><h3>犬隻名稱</h3><form className="alias-form" onSubmit={e => { e.preventDefault(); onAlias(dog.id, alias.trim()); }}><label>名稱（儲存在此瀏覽器）<input value={alias} maxLength={20} onChange={e => setAlias(e.target.value)} placeholder={`狗 ${dog.id}`} /></label><button className="secondary">儲存名稱</button></form></section>
+      <section className="detail-section"><h3>犬隻名稱</h3><form className="alias-form" onSubmit={async e => {
+        e.preventDefault(); setAliasBusy(true); setAliasError(''); setAliasSaved(false);
+        try { await onAlias(dog.id, alias.trim()); aliasDirty.current = false; setAliasSaved(true); }
+        catch (failure) { setAliasError(failure.message); }
+        finally { setAliasBusy(false); }
+      }}><label>名稱（儲存在 Supabase）<input value={alias} maxLength={20} disabled={aliasBusy} onChange={e => { aliasDirty.current = true; setAlias(e.target.value); setAliasSaved(false); }} placeholder={`狗 ${dog.id}`} /></label><button className="secondary" disabled={aliasBusy}>{aliasBusy ? '儲存中…' : '儲存名稱'}</button></form>
+        {aliasError && <p className="error" role="alert">{aliasError}</p>}{aliasSaved && <p role="status">名稱已儲存至 Supabase。</p>}</section>
       <section className="detail-section"><button className="text-button" onClick={() => setRaw(!raw)}>{raw ? '收起' : '查看'}最新封包原始資料</button>{raw && <pre>{JSON.stringify(packet.raw, null, 2)}</pre>}</section>
     </div>
   </section></div>;
