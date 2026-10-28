@@ -12,7 +12,7 @@ async function mockCloud(page, clustered = false) {
       batteryValid: 1, activityScore: 650, activityValid: 1, usbPresent: 0 }, rssi: -91, snr: 5,
   });
   const rows = clustered ? [4, 6, 8, 108].map((slave, i) => packet(i + 1, slave, 15000, 25033000 + i * 15))
-    : [packet(1, 2, 45000), packet(2, 2, 15000, 25033200), packet(3, 9, 240000)];
+    : [packet(1, 2, 45000), packet(2, 2, 15000, 25033200), packet(3, 9, 780000)];
   const requested = [];
   const names = [];
   await page.route('http://127.0.0.1:54321/**', async route => {
