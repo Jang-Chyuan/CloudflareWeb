@@ -12,7 +12,7 @@ async function mockCloud(page, clustered = false) {
       batteryValid: 1, activityScore: 650, activityValid: 1, usbPresent: 0 }, rssi: -91, snr: 5,
   });
   const rows = clustered ? [4, 6, 8, 108].map((slave, i) => packet(i + 1, slave, 15000, 25033000 + i * 15))
-    : [packet(1, 2, 45000), packet(2, 2, 15000, 25033200), packet(3, 9, 780000)];
+    : [packet(1, 2, 45000), packet(2, 2, 15000, 25033200), packet(3, 9, 2160000)];
   const requested = [];
   const names = [];
   await page.route('http://127.0.0.1:54321/**', async route => {
@@ -55,7 +55,9 @@ test('clustered labels do not overlap and connectors appear above markers', asyn
   await login(page, 4, false);
   await expect(page.locator('.dog-map-icon')).toHaveCount(1);
   await expect(page.locator('.dog-map-label')).toHaveCount(1);
-  await expect.poll(() => page.locator('.dog-map-label').allTextContents()).toEqual(['狗 108:按我看資訊']);
+  await expect(page.locator('.dog-map-label')).toContainText('最後封包：');
+  await expect(page.locator('.dog-map-label')).toContainText('電量：');
+  await expect(page.locator('.dog-map-label')).toContainText('最後定位：');
   await page.getByRole('button', { name: '顯示全部', exact: true }).click();
   await expect(page.locator('.dog-map-label')).toHaveCount(4);
   await expect.poll(() => page.locator('.leaflet-dogConnectors-pane path').count()).toBeGreaterThanOrEqual(8);
@@ -112,7 +114,6 @@ test('login, Slave map, detail, history playback and logout without phone locati
   await login(page);
   await expect(page.locator('.dog-map-icon')).toHaveCount(2);
   await expect(page.locator('.dog-map-stale')).toHaveCount(1);
-  await expect(page.locator('.dog-map-label').filter({ hasText: '狗 9' })).toContainText('× 未更新');
   const dog = page.locator('.dog-card').filter({ hasText: '狗 2' });
   await expect(dog).toContainText('12.5'); await expect(dog).toContainText('82%');
   await dog.getByRole('button', { name: '地圖跟隨', exact: true }).click();
@@ -128,7 +129,7 @@ test('login, Slave map, detail, history playback and logout without phone locati
   await dialog.getByLabel('名稱（儲存在 Supabase）', { exact: true }).fill('小白');
   await dialog.getByRole('button', { name: '儲存名稱', exact: true }).click();
   await expect(dialog.getByRole('status')).toContainText('名稱已儲存至 Supabase');
-  await expect(page.locator('.dog-map-label').filter({ hasText: '小白' })).toHaveCount(1);
+  await expect(page.locator('.dog-map-icon[title="小白(2)"]')).toHaveCount(1);
   await dialog.getByRole('button', { name: '修改設定' }).click();
   await dialog.getByLabel('帳號密碼', { exact: true }).fill('incorrect_test_password');
   await dialog.getByRole('button', { name: '解鎖', exact: true }).click();

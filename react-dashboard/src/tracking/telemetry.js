@@ -1,7 +1,7 @@
 import { predictEnvironment } from '../ml/Environment';
 
 export const DAY = 86400000;
-export const LIVE_WINDOW = 720000;
+export const LIVE_WINDOW = 35 * 60000;
 const numeric = (value, divisor = 1) => typeof value === 'number' && Number.isFinite(value) ? value / divisor : null;
 
 export function coordinate(lat, lon) {

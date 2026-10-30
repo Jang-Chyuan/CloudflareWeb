@@ -72,7 +72,7 @@ function Dashboard({ session }) {
             <button className="text-button" onClick={() => { setFocus(null); save({ hidden: [] }); }}>顯示全部</button>
           </div></div>
           <TrackingMap dogs={dogs} routes={routes} hidden={preferences.hidden} focus={focus} aliases={names.aliases} showTrails={preferences.trails} onDetails={id => setDetails({ id })} viewKey="live" syncing={cloud.loading} />
-          <div className="map-footer"><span>🐕 點選犬隻圖示查看詳細資訊</span><span>× 超過 12 分鐘未更新，保留最後位置</span></div>
+          <div className="map-footer"><span>🐕 點選犬隻圖示查看詳細資訊</span><span>× 超過 35 分鐘未更新或最新 GPS 無效，保留最後位置</span></div>
         </section><aside className="dog-list">
           <div className="dog-list-heading"><h2>犬隻 <span>{dogs.length}</span></h2><span>最近 24 小時</span></div>
           <label className="sr-only" htmlFor="dog-search">搜尋犬隻或 Master</label><input id="dog-search" className="dog-search" type="search" placeholder="搜尋犬隻或 Master…" value={search} onChange={e => setSearch(e.target.value)} />

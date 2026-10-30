@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { dogColor, dogName, formatTime, positionLabel } from '../tracking/telemetry';
+import { dogColor, dogName, formatTime } from '../tracking/telemetry';
 import { placeDogLabel, labelLineEnd, spreadDogIcons } from '../tracking/labels';
 
 export default function TrackingMap({ dogs, routes, hidden, focus, aliases, showTrails, onDetails, viewKey, syncing = false }) {
@@ -48,7 +48,18 @@ export default function TrackingMap({ dogs, routes, hidden, focus, aliases, show
     for (const dog of dogs) {
       if (!dog.position || hidden.includes(dog.id)) continue;
       const label = document.createElement('span');
-      label.textContent = `${dogName(dog.id, aliases)}:按我看資訊${positionLabel(dog) ? ` ${positionLabel(dog)}` : ''}`;
+      label.style.whiteSpace = 'nowrap';
+      const labelRows = [
+        `最後封包：${formatTime(dog.lastPacketAt)}`,
+        `電量：${Number.isFinite(dog.battery) ? `${dog.battery}%` : '—'}`,
+        `最後定位：${formatTime(dog.lastPositionAt)}`,
+      ];
+      for (const text of labelRows) {
+        const row = document.createElement('span');
+        row.style.display = 'block';
+        row.textContent = text;
+        label.appendChild(row);
+      }
       label.title = dog.stale ? `最後位置：${formatTime(dog.lastPositionAt)}` : '';
       const showCross = dog.stale;
       const icon = L.divIcon({ className: `dog-map-icon${showCross ? ' dog-map-stale' : ''}`, html: `<span class="dog-map-dot" style="background:${dogColor(dog.id)}">🐕${showCross ? '<span class="dog-stale-cross">×</span>' : ''}</span>`, iconSize: [38, 38], iconAnchor: [19, 19] });

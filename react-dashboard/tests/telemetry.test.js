@@ -112,8 +112,10 @@ test('never invent a location or show invalid battery; staleness and 24h retenti
   assert.equal(coordinate(0, 0), null); assert.equal(coordinate(100, 120), null);
   const noFix = buildDogs([parseTelemetry(raw(now, { lat: 0, lon: 0, batteryValid: 0 }))], [], now)[0];
   assert.equal(noFix.position, null); assert.equal(noFix.battery, null); assert.equal(noFix.stale, true);
-  assert.equal(buildDogs([parseTelemetry(raw(now - 720000))], [], now)[0].stale, false);
-  assert.equal(buildDogs([parseTelemetry(raw(now - 720001))], [], now)[0].stale, true);
+  assert.equal(buildDogs([parseTelemetry(raw(now - 2100000))], [], now)[0].stale, false);
+  const stale = buildDogs([parseTelemetry(raw(now - 2100001))], [], now)[0];
+  assert.equal(stale.stale, true);
+  assert.deepEqual(stale.position, [25.033, 121.565]);
   assert.equal(buildDogs([parseTelemetry(raw(now - DAY - 1))], [], now).length, 0);
 });
 
