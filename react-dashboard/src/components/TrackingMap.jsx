@@ -52,6 +52,7 @@ export default function TrackingMap({ dogs, routes, hidden, focus, aliases, show
       const labelRows = [
         `最後封包：${formatTime(dog.lastPacketAt)}`,
         `電量：${Number.isFinite(dog.battery) ? `${dog.battery}%` : '—'}`,
+        `RSSI：${Number.isFinite(dog.packet?.rssi) ? `${dog.packet.rssi} dBm` : '—'}`,
         `最後定位：${formatTime(dog.lastPositionAt)}`,
       ];
       for (const text of labelRows) {
