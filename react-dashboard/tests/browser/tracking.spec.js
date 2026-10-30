@@ -58,6 +58,7 @@ test('clustered labels do not overlap and connectors appear above markers', asyn
   await login(page, 4, false);
   await expect(page.locator('.dog-map-icon')).toHaveCount(1);
   await expect(page.locator('.dog-map-label')).toHaveCount(1);
+  await expect(page.locator('.dog-map-label')).toContainText('ID:108');
   await expect(page.locator('.dog-map-label')).toContainText('最後封包：');
   await expect(page.locator('.dog-map-label')).toContainText('電量：');
   await expect(page.locator('.dog-map-label')).toContainText('RSSI：-91 dBm');
