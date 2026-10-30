@@ -12,3 +12,7 @@
 .dog-map-label::before{display:none}
 .dog-map-dot{position:relative}.dog-stale-cross{position:absolute;right:-5px;top:-6px;background:#fff;color:#b42318;border:1px solid #b42318;border-radius:50%;width:19px;height:19px;font-size:19px;line-height:16px;text-align:center;font-weight:700}.dog-map-stale .dog-map-dot{filter:saturate(.5)}
 .map-options{flex-wrap:wrap}.map-options button[aria-pressed="true"]{color:#247a61;border-color:#247a61;background:#eef7f2}
+.google-dog-overlay .dog-map-icon{position:absolute;width:38px;height:38px;padding:0;pointer-events:auto;z-index:1;cursor:pointer;border-radius:50%}
+.google-dog-overlay .dog-map-dot{box-sizing:border-box}
+.google-dog-overlay .dog-connectors{position:absolute;left:0;top:0;z-index:2;overflow:visible;pointer-events:none}
+.google-dog-overlay .dog-map-label{position:absolute;z-index:3;white-space:nowrap;background:#fff;line-height:1.5;border:1px solid!important;pointer-events:none}

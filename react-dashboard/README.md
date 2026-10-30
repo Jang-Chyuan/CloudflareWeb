@@ -1,6 +1,6 @@
 ﻿# DogTracker Web
 
-參考 `C:\Dog_Reactive\DogTracker` 的 Slave 追蹤畫面製作，以 React、Vite 與 Leaflet 顯示 Supabase 雲端犬隻資料。
+參考 `C:\Dog_Reactive\DogTracker` 的 Slave 追蹤畫面製作，以 React、Vite 與 Google Maps 顯示 Supabase 雲端犬隻資料。
 
 ## 功能
 
@@ -22,6 +22,7 @@
 ```dotenv
 VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
+VITE_GOOGLE_MAPS_API_KEY=YOUR_GOOGLE_MAPS_API_KEY
 ```
 
 沿用現有 DogTracker 後端，不需修改資料庫 schema：
@@ -79,7 +80,11 @@ npm.cmd run dev
 | Build command | `npm ci && npm run build` |
 | Deploy command | `npx wrangler deploy` |
 
-Build variables and secrets 需設定 `VITE_SUPABASE_URL` 與 `VITE_SUPABASE_PUBLISHABLE_KEY`，設定後重新建置。Vite 在建置時將這兩個公開前端設定寫入程式；Worker 執行時變數不會更新靜態網站。
+Build variables and secrets 需設定 `VITE_SUPABASE_URL`、`VITE_SUPABASE_PUBLISHABLE_KEY` 與 `VITE_GOOGLE_MAPS_API_KEY`，設定後重新建置。Vite 在建置時將這些公開前端設定寫入程式；Worker 執行時變數不會更新靜態網站。
+
+Google Maps 設定：在 Google Cloud 專案啟用帳務與 Maps JavaScript API。API Key 設定網站來源限制，允許正式網站及本地測試網址（如 `http://127.0.0.1:5173/*`、`http://localhost:5173/*`），API 限制只允許 Maps JavaScript API。前端金鑰會出現在瀏覽器中，請以來源與 API 限制管理使用範圍。本專案使用 OverlayView 自訂狗圖示與標籤，不需要 Map ID。地圖內建道路／衛星切換；未設定金鑰時顯示錯誤訊息，犬隻清單仍可查看。地圖 SDK 與底圖不納入離線快取。
+
+官方文件：[載入 API](https://developers.google.com/maps/documentation/javascript/load-maps-js-api)、[自訂覆蓋層](https://developers.google.com/maps/documentation/javascript/customoverlays)。瀏覽器測試使用離線 Maps API 模擬檢查覆蓋層與追蹤互動；實際底圖、帳務／網域授權及道路／衛星切換需以有效金鑰另行驗證。
 
 `wrangler.jsonc` 指定上傳 `./dist`，不可部署 `src` 或原始專案目錄。
 

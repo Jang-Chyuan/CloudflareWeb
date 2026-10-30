@@ -1,4 +1,7 @@
 import { test, expect } from '@playwright/test';
+import { mockGoogleMaps } from './googleMapsMock';
+
+test.beforeEach(async ({ page }) => { await mockGoogleMaps(page); });
 
 const owner = '00000000-0000-4000-8000-000000000010';
 async function mockCloud(page, clustered = false) {
@@ -61,7 +64,7 @@ test('clustered labels do not overlap and connectors appear above markers', asyn
   await expect(page.locator('.dog-map-label')).toContainText('最後定位：');
   await page.getByRole('button', { name: '顯示全部', exact: true }).click();
   await expect(page.locator('.dog-map-label')).toHaveCount(4);
-  await expect.poll(() => page.locator('.leaflet-dogConnectors-pane path').count()).toBeGreaterThanOrEqual(8);
+  await expect.poll(() => page.locator('.dog-connectors path').count()).toBeGreaterThanOrEqual(8);
   await expect.poll(async () => {
   const icons = await page.locator('.dog-map-icon').evaluateAll(elements => elements.map(element => {
     const r = element.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
@@ -86,16 +89,16 @@ test('clustered labels do not overlap and connectors appear above markers', asyn
     }).toBe(true);
   }
   await checkLabels();
-  const z = await page.locator('.leaflet-dogConnectors-pane').evaluate(element => ({
+  const z = await page.locator('.dog-connectors').evaluate(element => ({
     lines: Number(getComputedStyle(element).zIndex),
-    markers: Number(getComputedStyle(document.querySelector('.leaflet-marker-pane')).zIndex),
-    labels: Number(getComputedStyle(document.querySelector('.leaflet-tooltip-pane')).zIndex),
+    markers: Number(getComputedStyle(document.querySelector('.dog-map-icon')).zIndex),
+    labels: Number(getComputedStyle(document.querySelector('.dog-map-label')).zIndex),
   }));
   expect(z.lines).toBeGreaterThan(z.markers);
   expect(z.lines).toBeLessThan(z.labels);
   await page.screenshot({ path: 'test-results/clustered-labels-desktop.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect.poll(async () => page.locator('.leaflet-dogConnectors-pane path').count()).toBeGreaterThanOrEqual(8);
+  await expect.poll(async () => page.locator('.dog-connectors path').count()).toBeGreaterThanOrEqual(8);
   await checkLabels();
   await page.screenshot({ path: 'test-results/clustered-labels-mobile.png', fullPage: true });
   expect(failures).toEqual([]);
