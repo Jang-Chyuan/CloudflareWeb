@@ -31,7 +31,7 @@ export function createDogOverlay(maps, map, dogs, aliases, onDetails) {
         label.className = 'dog-map-label';
         label.style.borderColor = dogColor(dog.id);
         for (const text of [
-          `ID:${dog.id}`,
+          `名字：${dogName(dog.id, aliases)}`,
           `最後封包：${formatTime(dog.lastPacketAt)}`,
           `電量：${Number.isFinite(dog.battery) ? `${dog.battery}%` : '—'}`,
           `RSSI：${Number.isFinite(dog.packet?.rssi) ? `${dog.packet.rssi} dBm` : '—'}`,

@@ -58,7 +58,7 @@ test('clustered labels do not overlap and connectors appear above markers', asyn
   await login(page, 4, false);
   await expect(page.locator('.dog-map-icon')).toHaveCount(1);
   await expect(page.locator('.dog-map-label')).toHaveCount(1);
-  await expect(page.locator('.dog-map-label')).toContainText('ID:108');
+  await expect(page.locator('.dog-map-label')).toContainText('名字：狗 108');
   await expect(page.locator('.dog-map-label')).toContainText('最後封包：');
   await expect(page.locator('.dog-map-label')).toContainText('電量：');
   await expect(page.locator('.dog-map-label')).toContainText('RSSI：-91 dBm');
@@ -135,6 +135,7 @@ test('login, Slave map, detail, history playback and logout without phone locati
   await dialog.getByRole('button', { name: '儲存名稱', exact: true }).click();
   await expect(dialog.getByRole('status')).toContainText('名稱已儲存至 Supabase');
   await expect(page.locator('.dog-map-icon[title="小白(2)"]')).toHaveCount(1);
+  await expect(page.locator('.dog-map-label').filter({ hasText: '名字：小白(2)' })).toHaveCount(1);
   await dialog.getByRole('button', { name: '修改設定' }).click();
   await dialog.getByLabel('帳號密碼', { exact: true }).fill('incorrect_test_password');
   await dialog.getByRole('button', { name: '解鎖', exact: true }).click();
