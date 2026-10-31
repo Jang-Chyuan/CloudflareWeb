@@ -1,6 +1,5 @@
 import React from 'react';
 import { dogColor, dogName, formatTime, positionLabel } from '../tracking/telemetry';
-import { environmentLabel } from '../ml/Environment';
 
 export function Metrics({ dog }) {
   return <div className="dog-metrics">
@@ -9,7 +8,7 @@ export function Metrics({ dog }) {
   </div>;
 }
 
-export default function DogCard({ dog, aliases, hidden, following, onFollow, onToggle, onDetails, now, showML = false }) {
+export default function DogCard({ dog, aliases, hidden, following, onFollow, onToggle, onDetails, now }) {
   const name = dogName(dog.id, aliases);
   return <article className={`dog-card ${following ? 'following' : ''} ${hidden ? 'dog-hidden' : ''}`}>
     <div className="dog-card-top"><span className="dog-avatar" style={{ background: `${dogColor(dog.id)}18`, color: dogColor(dog.id) }}>🐕</span>
@@ -19,9 +18,6 @@ export default function DogCard({ dog, aliases, hidden, following, onFollow, onT
     <div className="dog-status"><i className={dog.stale ? 'offline-dot' : 'online-dot'} />{positionLabel(dog) || dog.status}{dog.retained && <span>最後有效位置</span>}</div>
     <Metrics dog={dog} />
     <dl className="dog-times"><div><dt>最後封包</dt><dd>{formatTime(dog.lastPacketAt)}</dd></div><div><dt>有效定位</dt><dd>{formatTime(dog.lastPositionAt)}</dd></div></dl>
-    {showML && <p className="environment">ML 推論：{environmentLabel(dog.environment, now)}</p>}
-    {dog.fixedReason && <p className="fixed-note">設定位置：{dog.fixedName} · {dog.fixedReason}</p>}
-    {dog.savedFallback && <p className="warning">顯示設定位置：{dog.fixedName}；尚未取得有效定位或近期固定位置判定。</p>}
     {dog.lastDisplayed && <p className="warning">× 未更新／最後顯示位置；固定位置套用已關閉。</p>}
     {dog.stale && <p className="warning">{dog.position ? dog.retained ? '× GPS 未更新，顯示最後有效位置。' : '× 位置未更新，顯示最後位置。' : '尚無可顯示位置。'}</p>}
     <div className="dog-actions"><button disabled={!dog.position || hidden} className={following ? 'active-follow' : ''} onClick={onFollow}>{following ? '取消跟隨' : '地圖跟隨'}</button><button onClick={onDetails}>詳細資訊 ↗</button></div>

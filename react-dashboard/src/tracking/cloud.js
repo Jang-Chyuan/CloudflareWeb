@@ -1,6 +1,15 @@
 import { parseTelemetry, DAY, coordinate } from './telemetry';
 
 const FIELDS = 'event_id,master_id,slave_id,seq,received_at,payload,rssi,snr,upload_source,phone_received_at';
+export async function fetchDogHealth(client, masterId, slaveId, signal) {
+  const { data, error } = await client.from('dog_health')
+    .select('event_id,master_id,slave_id,received_at,battery_pct,battery_valid,rssi')
+    .eq('master_id', masterId).eq('slave_id', slaveId)
+    .order('received_at', { ascending: false }).order('event_id', { ascending: false })
+    .limit(1).abortSignal(signal);
+  if (error) throw error;
+  return data?.[0] ?? null;
+}
 export async function fetchLastGpsFix(client, masterIds, slaveId, signal, now = Date.now()) {
   if (!masterIds.length) return null;
   let offset = 0;
@@ -66,13 +75,6 @@ export async function fetchTelemetry({ client, masterIds, start, end, signal, on
     onProgress(records.length);
     onPage(page);
   }
-}
-
-export async function readFixedLocations(client, masterIds, signal) {
-  // RLS limits rows to this account's authorized Masters, as in DogTracker.
-  const { data, error } = await client.from('slave_fixed_locations')
-    .select('slave_id,master_id,name,latitude,longitude,enabled,updated_at').abortSignal(signal);
-  return error ? { locations: [], warning: '固定位置設定讀取失敗；保留上次成功讀取的設定。' } : { locations: data ?? [], warning: '' };
 }
 
 export function mergeRows(old, incoming, now) {

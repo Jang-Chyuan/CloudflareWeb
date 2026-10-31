@@ -4,6 +4,7 @@ import { useAuth, useCloudTracking, usePreferences } from './hooks/useCloudTrack
 import { buildDogs, buildRoutes, retainDogPositions } from './tracking/telemetry';
 import { readPositionCache, savePositionCache } from './tracking/positionCache';
 import { useDogNames } from './hooks/useDogNames';
+import { useDogHealth } from './hooks/useDogHealth';
 import Login from './components/Login';
 import TrackingMap from './components/TrackingMap';
 import DogCard from './components/DogCard';
@@ -28,15 +29,19 @@ function Dashboard({ session }) {
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 10000); return () => clearInterval(timer); }, []);
   const lastDogs = useRef(null);
   if (lastDogs.current === null) lastDogs.current = readPositionCache(localStorage, session.user.id);
-  const dogs = useMemo(() => retainDogPositions(buildDogs(cloud.rows, cloud.fixedLocations, now, preferences.applyFixed, cloud.historicalFixes),
+  const dogs = useMemo(() => retainDogPositions(buildDogs(cloud.rows, [], now, cloud.historicalFixes),
     lastDogs.current.filter(dog => cloud.masters.includes(dog.masterId)),
-    now), [cloud.rows, cloud.fixedLocations, cloud.historicalFixes, cloud.masters, preferences.applyFixed, now]);
+    now), [cloud.rows, cloud.historicalFixes, cloud.masters, now]);
   useEffect(() => {
     if (!cloud.masters.length && !cloud.lastSync) return;
     lastDogs.current = dogs;
     savePositionCache(localStorage, session.user.id, dogs);
   }, [dogs, cloud.masters, cloud.lastSync, session.user.id]);
   const routes = useMemo(() => buildRoutes(cloud.rows, now - preferences.windowMinutes * 60000, now), [cloud.rows, preferences.windowMinutes, now]);
+  const health = useDogHealth(session.user.id, dogs);
+  const mapDogs = useMemo(() => dogs.map(dog => ({ ...dog, healthDisplay: health.health[dog.id] ?? null,
+    lastPositionAt: dog.gpsLastPositionAt ?? (dog.positionSource === 'gps' ? dog.lastPositionAt : null),
+  })), [dogs, health.health]);
   const filtered = dogs.filter(dog => `${names.aliases[dog.id] ?? ''} ${dog.id} Master ${dog.masterId}`.toLowerCase().includes(search.toLowerCase()));
   const selectedDog = details?.history ? details.dog : dogs.find(dog => dog.id === details?.id);
   const closeDetails = useCallback(() => setDetails(null), []);
@@ -60,25 +65,24 @@ function Dashboard({ session }) {
     {(cloud.error || authError) && <div className="error banner" role="alert">{cloud.error || authError}<button className="text-button" disabled={cloud.loading} onClick={cloud.refresh}>重新讀取</button></div>}
     {cloud.warning && <div className="warning banner" role="status">{cloud.warning}</div>}
     {names.error && <div className="warning banner" role="status">{names.error}</div>}
+    {health.error && <div className="warning banner" role="status">{health.error}</div>}
     <main className="dashboard-main">
       {tab === 'live' ? <>
         <div className="tracking-layout"><section className="tracking-map-area">
           <div className="map-toolbar"><div className="map-title"><span className="online-dot" /> Slave 地圖</div><div className="map-options">
-            <button className="secondary" aria-pressed={preferences.applyFixed} onClick={() => save({ applyFixed: !preferences.applyFixed })}
-              title="開關控制室內推論；USB 充電一律套用固定座標，窗邊不套用">ML 室內推論：{preferences.applyFixed ? '開啟' : '關閉'}</button>
             <label className="check-label"><input type="checkbox" checked={preferences.trails} onChange={e => save({ trails: e.target.checked })} />移動路徑</label>
             <label className="sr-only" htmlFor="route-window">路徑時間範圍</label><select id="route-window" value={preferences.windowMinutes} onChange={e => save({ windowMinutes: Number(e.target.value) })}>
               {[3, 10, 30, 60, 360, 1440].map(minutes => <option key={minutes} value={minutes}>過去 {minutes < 60 ? `${minutes} 分鐘` : `${minutes / 60} 小時`}</option>)}</select>
             <button className="text-button" onClick={() => { setFocus(null); save({ hidden: [] }); }}>顯示全部</button>
           </div></div>
-          <TrackingMap dogs={dogs} routes={routes} hidden={preferences.hidden} focus={focus} aliases={names.aliases} showTrails={preferences.trails} onDetails={id => setDetails({ id })} viewKey="live" syncing={cloud.loading} />
+          <TrackingMap dogs={mapDogs} routes={routes} hidden={preferences.hidden} focus={focus} aliases={names.aliases} showTrails={preferences.trails} onDetails={id => setDetails({ id })} viewKey="live" syncing={cloud.loading} />
           <div className="map-footer"><span>🐕 點選犬隻圖示查看詳細資訊</span><span>× 超過 35 分鐘未更新或最新 GPS 無效，保留最後位置</span></div>
         </section><aside className="dog-list">
           <div className="dog-list-heading"><h2>犬隻 <span>{dogs.length}</span></h2><span>最近 24 小時</span></div>
           <label className="sr-only" htmlFor="dog-search">搜尋犬隻或 Master</label><input id="dog-search" className="dog-search" type="search" placeholder="搜尋犬隻或 Master…" value={search} onChange={e => setSearch(e.target.value)} />
           {!dogs.length && <div className="empty-state"><span>🐾</span><h3>{cloud.loading ? '正在讀取犬隻資料…' : cloud.lastSync && !cloud.masters.length ? '尚無 Master 授權' : '目前沒有犬隻資料'}</h3><p>{cloud.lastSync && !cloud.masters.length ? '請聯絡管理員授權此帳號。' : '等待 Master 上傳最近 24 小時的 Slave 封包。'}</p></div>}
           {!!dogs.length && !filtered.length && <p className="empty-search">找不到符合條件的犬隻。</p>}
-          <div className="dog-list-scroll">{filtered.map(dog => <DogCard key={dog.id} dog={dog} now={now} showML={preferences.applyFixed} aliases={names.aliases} hidden={preferences.hidden.includes(dog.id)} following={focus === dog.id}
+          <div className="dog-list-scroll">{filtered.map(dog => <DogCard key={dog.id} dog={dog} now={now} aliases={names.aliases} hidden={preferences.hidden.includes(dog.id)} following={focus === dog.id}
             onFollow={() => setFocus(focus === dog.id ? null : dog.id)} onToggle={() => toggleDog(dog.id)} onDetails={() => setDetails({ id: dog.id })} />)}</div>
         </aside></div>
       </> : <History masters={cloud.masters} aliases={names.aliases} hidden={preferences.hidden} onDetails={setDetails} />}
@@ -86,7 +90,7 @@ function Dashboard({ session }) {
     </main>
     {selectedDog && <DogDetails key={`${selectedDog.id}:${details?.history ? 'history' : 'live'}`} dog={selectedDog} rows={details?.history ? details.rows : cloud.rows} now={details?.history ? details.now : now} history={!!details?.history}
       aliases={names.aliases} onAlias={(id, alias) => names.saveName(id, selectedDog.masterId, alias)} onClose={closeDetails}
-      fixedLocations={cloud.fixedLocations} owner={session.user.id} onRefresh={cloud.refreshFixed} showML={preferences.applyFixed} />}
+      />}
   </div>;
 }
 

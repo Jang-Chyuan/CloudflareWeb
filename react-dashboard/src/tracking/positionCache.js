@@ -6,11 +6,11 @@ export function readPositionCache(storage, owner) {
   try {
     const rows = JSON.parse(storage.getItem(key(owner)) ?? '[]');
     if (!Array.isArray(rows)) return [];
-    return rows.filter(row => Number.isInteger(row.id) && Number.isInteger(row.masterId)
+    return rows.filter(row => row.positionSource !== 'fixed' && Number.isInteger(row.id) && Number.isInteger(row.masterId)
       && Array.isArray(row.position) && coordinate(...row.position)
       && Number.isFinite(row.lastPositionAt)).map(row => ({
       ...row, packet: {}, stale: true, retained: true, lastDisplayed: true,
-      charging: false, fixedReason: null, speed: null, battery: null, environment: null,
+      charging: false, fixedReason: null, speed: null, battery: null,
       status: '未收到新定位',
     }));
   } catch { return []; }

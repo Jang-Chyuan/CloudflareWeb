@@ -1,4 +1,3 @@
-import { predictEnvironment } from '../ml/Environment';
 
 export const DAY = 86400000;
 export const LIVE_WINDOW = 35 * 60000;
@@ -32,91 +31,58 @@ export function parseTelemetry(row) {
   };
 }
 
-export function environments(rows, now) {
-  const buckets = new Map();
-  for (const row of rows) {
-    const bucket = Math.floor(row.track_at / 120000) * 120000;
-    if (bucket + 120000 > now || now - bucket > 600000) continue;
-    const key = `${row.master_id}:${row.slave_id}:${bucket}`;
-    if (!buckets.has(key)) buckets.set(key, []);
-    buckets.get(key).push(row);
-  }
-  const latest = new Map();
-  for (const group of buckets.values()) {
-    const result = predictEnvironment(group);
-    const id = group[0].slave_id;
-    if (!latest.has(id) || latest.get(id).observedAt < result.observedAt) latest.set(id, result);
-  }
-  return latest;
-}
-
-export function fixedPositionReason(charging, environment, now, enabled = true) {
-  if (charging) return '充電中';
-  if (!enabled) return null;
-  if (environment?.environment === 'indoor' && now >= environment.observedAt
-    && now - environment.observedAt <= 120000) return '推論室內';
-  return null;
-}
-
-export function buildDogs(rows, fixedLocations = [], now = Date.now(), applyFixed = true, historicalFixes = []) {
+export function buildDogs(rows, fixedLocations = [], now = Date.now(), historicalFixes = []) {
   const groups = new Map();
   for (const row of rows) {
     if (row.track_at > now || now - row.track_at > DAY) continue;
     if (!groups.has(row.slave_id)) groups.set(row.slave_id, []);
     groups.get(row.slave_id).push(row);
   }
-  const results = environments(rows, now);
   return [...groups].map(([id, samples]) => {
     samples.sort((a, b) => b.track_at - a.track_at || b.received_at - a.received_at || b.id.localeCompare(a.id));
     const packet = samples[0];
     const lastFix = samples.find(row => coordinate(row.slave_lat, row.slave_lon))
       ?? historicalFixes.find(row => row.slave_id === id && row.track_at <= now && coordinate(row.slave_lat, row.slave_lon));
-    const environment = results.get(id) ?? null;
-    const setting = fixedLocations.find(value => value.slave_id === id && value.enabled);
     const charging = packet.usb_present === 1;
-    const reason = fixedPositionReason(charging, environment, now, applyFixed);
     const communicating = now - packet.track_at <= LIVE_WINDOW;
-    const fixed = setting && coordinate(setting.latitude, setting.longitude) && reason && (charging || communicating) ? setting : null;
     const noFix = !coordinate(packet.slave_lat, packet.slave_lon);
     const savedFallback = null;
-    const position = fixed ? coordinate(fixed.latitude, fixed.longitude) : savedFallback ? coordinate(savedFallback.latitude, savedFallback.longitude)
-      : lastFix ? coordinate(lastFix.slave_lat, lastFix.slave_lon) : null;
+    const position = lastFix ? coordinate(lastFix.slave_lat, lastFix.slave_lon) : null;
     return {
-      id, masterId: packet.master_id, packet, position, environment,
-      lastPacketAt: packet.track_at, lastPositionAt: fixed ? packet.track_at : savedFallback ? null : lastFix?.track_at ?? null,
+      id, masterId: packet.master_id, packet, position,
+      gpsLastPositionAt: lastFix?.track_at ?? null,
+      lastPacketAt: packet.track_at, lastPositionAt: lastFix?.track_at ?? null,
       charging,
-      retained: !fixed && noFix && !!lastFix,
+      retained: noFix && !!lastFix,
       savedFallback: !!savedFallback,
-      stale: noFix || !!savedFallback || !position || !communicating || now - (fixed ? packet.track_at : lastFix?.track_at ?? 0) > LIVE_WINDOW,
-      status: !communicating ? '未收到新資料' : noFix && !fixed ? '有通訊／GPS 未定位' : '有通訊／定位正常',
-      speed: fixed || noFix ? null : packet.speed_kmh,
+      stale: noFix || !!savedFallback || !position || !communicating || now - (lastFix?.track_at ?? 0) > LIVE_WINDOW,
+      status: !communicating ? '未收到新資料' : noFix ? '有通訊／GPS 未定位' : '有通訊／定位正常',
+      speed: noFix ? null : packet.speed_kmh,
       battery: packet.battery_valid ? packet.battery_percentage : null,
-      fixedName: fixed?.name ?? savedFallback?.name, fixedReason: fixed ? reason : null,
-      positionSource: fixed || savedFallback ? 'fixed' : 'gps',
+      fixedReason: null,
+      positionSource: 'gps',
     };
   }).sort((a, b) => a.id - b.id);
 }
 
 export function positionLabel(dog) {
-  if (dog.charging) return '充電中';
   if (dog.stale || dog.lastDisplayed) return `× 未更新／最後顯示位置，${Number.isFinite(dog.lastPositionAt) ? formatTime(dog.lastPositionAt) : '時間未知'}${dog.fixedReason ? `／${dog.fixedReason}` : ''}`;
-  if (dog.fixedReason === '推論室內') return '推論室內／固定位置';
   return '';
 }
 
 // Never bridge missing fixes, a >2 minute gap, or a change of Master.
-export function retainDogPositions(dogs, previous, now, fixedDisabled = false) {
-  const old = new Map(previous.map(dog => [dog.id, dog]));
+export function retainDogPositions(dogs, previous, now) {
+  const old = new Map(previous.filter(dog => dog.positionSource !== 'fixed').map(dog => [dog.id, dog]));
   const current = dogs.map(dog => {
     const cached = old.get(dog.id);
     old.delete(dog.id);
-    if (!cached?.position || dog.fixedReason || (dog.position && (fixedDisabled || dog.lastPositionAt >= cached.lastPositionAt))) return dog;
+    if (!cached?.position || (dog.position && dog.lastPositionAt >= cached.lastPositionAt)) return dog;
     return { ...dog, position: cached.position, lastPositionAt: cached.lastPositionAt,
       positionSource: cached.positionSource,
       retained: true, savedFallback: false,
       lastDisplayed: true,
-      stale: fixedDisabled && cached.positionSource === 'fixed' || dog.stale || now - cached.lastPositionAt > LIVE_WINDOW, speed: null,
-      fixedName: cached.fixedName, fixedReason: null };
+      stale: dog.stale || now - cached.lastPositionAt > LIVE_WINDOW, speed: null,
+      fixedReason: null };
   });
   for (const dog of old.values()) {
     if (dog.position) current.push({ ...dog, stale: true, retained: true, lastDisplayed: true, charging: false, speed: null, status: '未收到新資料', fixedReason: null });

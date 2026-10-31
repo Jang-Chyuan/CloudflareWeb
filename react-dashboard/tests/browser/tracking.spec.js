@@ -26,6 +26,11 @@ async function mockCloud(page, clustered = false) {
     else if (url.pathname.endsWith('/logout')) body = {};
     else if (url.pathname.endsWith('/device_members')) body = Number(url.searchParams.get('offset')) > 0 ? [] : [{ gateway_id: 'master_5', slave_id: null }];
     else if (url.pathname.endsWith('/dog_telemetry')) body = url.searchParams.has('or') ? [] : rows;
+    else if (url.pathname.endsWith('/dog_health')) body = [{
+      event_id: '00000000-0000-4000-8000-000000000099', master_id: 5,
+      slave_id: Number(url.searchParams.get('slave_id')?.replace('eq.', '')),
+      received_at: new Date(now - 5000).toISOString(), battery_pct: 63, battery_valid: true, rssi: -72,
+    }];
     else if (url.pathname.endsWith('/slave_fixed_locations')) body = [];
     else if (url.pathname.endsWith('/slave_names')) {
       if (route.request().method() === 'POST') {
@@ -61,7 +66,8 @@ test('clustered labels do not overlap and connectors appear above markers', asyn
   await expect(page.locator('.dog-map-label')).toContainText('名字：狗 108');
   await expect(page.locator('.dog-map-label')).toContainText('最後封包：');
   await expect(page.locator('.dog-map-label')).toContainText('電量：');
-  await expect(page.locator('.dog-map-label')).toContainText('RSSI：-91 dBm');
+  await expect(page.locator('.dog-map-label')).toContainText('電量：63%');
+  await expect(page.locator('.dog-map-label')).toContainText('RSSI：-72 dBm');
   await expect(page.locator('.dog-map-label')).toContainText('最後定位：');
   await page.getByRole('button', { name: '顯示全部', exact: true }).click();
   await expect(page.locator('.dog-map-label')).toHaveCount(4);
@@ -136,10 +142,8 @@ test('login, Slave map, detail, history playback and logout without phone locati
   await expect(dialog.getByRole('status')).toContainText('名稱已儲存至 Supabase');
   await expect(page.locator('.dog-map-icon[title="小白(2)"]')).toHaveCount(1);
   await expect(page.locator('.dog-map-label').filter({ hasText: '名字：小白(2)' })).toHaveCount(1);
-  await dialog.getByRole('button', { name: '修改設定' }).click();
-  await dialog.getByLabel('帳號密碼', { exact: true }).fill('incorrect_test_password');
-  await dialog.getByRole('button', { name: '解鎖', exact: true }).click();
-  await expect(dialog.getByRole('alert')).toContainText('無法解鎖');
+  await expect(dialog.getByRole('heading', { name: '固定位置設定' })).toHaveCount(0);
+  await expect(dialog.getByRole('heading', { name: 'ML 推論結果' })).toHaveCount(0);
   await page.keyboard.press('Escape'); await expect(dialog).not.toBeVisible();
   await page.getByRole('button', { name: '↝ 歷史軌跡', exact: true }).click();
   await page.getByRole('button', { name: '查詢軌跡', exact: true }).click();
@@ -167,14 +171,6 @@ test('mobile layout stays within viewport and login failure stays visible', asyn
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: 'test-results/slave-mobile.png', fullPage: true });
   await expect(page.getByRole('button', { name: /^ML 推論：/ })).toHaveCount(0);
-  const fixedToggle = page.getByRole('button', { name: 'ML 室內推論：開啟', exact: true });
-  await expect(fixedToggle).toHaveAttribute('aria-pressed', 'true');
-  await fixedToggle.click();
-  await expect(page.getByRole('button', { name: 'ML 室內推論：關閉', exact: true })).toHaveAttribute('aria-pressed', 'false');
-  await page.reload();
-  await expect(page.getByRole('button', { name: 'ML 室內推論：關閉', exact: true })).toHaveAttribute('aria-pressed', 'false');
-  await page.getByRole('button', { name: 'ML 室內推論：關閉', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'ML 室內推論：開啟', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.locator('.dog-card').filter({ hasText: '狗 2' }).locator('.dog-title').click();
   await expect(page.getByRole('dialog')).toBeVisible();
   const box = await page.getByRole('dialog').boundingBox(); expect(box.width).toBeLessThan(391);

@@ -70,7 +70,7 @@ export default function History({ masters, aliases, hidden, onDetails }) {
     const fix = [...samples].reverse().find(row => coordinate(row.slave_lat, row.slave_lon));
     if (!packet) return;
     onDetails({ history: true, now: visibleTime, rows: filtered, dog: {
-      id, packet, masterId: packet.master_id, status: '歷史紀錄', environment: null,
+      id, packet, masterId: packet.master_id, status: '歷史紀錄',
       lastPacketAt: packet.track_at, lastPositionAt: fix?.track_at ?? null,
       position: fix ? coordinate(fix.slave_lat, fix.slave_lon) : null,
       retained: fix?.id !== packet.id, stale: false,

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { fetchTelemetry, listMasters, mergeRows, readFixedLocations, fetchLastGpsFix } from '../tracking/cloud';
+import { fetchTelemetry, listMasters, mergeRows, fetchLastGpsFix } from '../tracking/cloud';
 import { DAY, buildDogs } from '../tracking/telemetry';
 
 export function useAuth() {
@@ -27,7 +27,6 @@ export function useAuth() {
 export function useCloudTracking(owner) {
   const [rows, setRows] = useState([]);
   const [masters, setMasters] = useState([]);
-  const [fixedLocations, setFixedLocations] = useState([]);
   const [historicalFixes, setHistoricalFixes] = useState([]);
   const [gpsWarning, setGpsWarning] = useState('');
   const gpsQueryTimes = useRef(new Map());
@@ -35,7 +34,6 @@ export function useCloudTracking(owner) {
   const [progress, setProgress] = useState(0);
   const [lastSync, setLastSync] = useState(null);
   const [error, setError] = useState('');
-  const [warning, setWarning] = useState('');
   const refreshRef = useRef(() => {});
   useEffect(() => { gpsQueryTimes.current.clear(); setHistoricalFixes([]); setGpsWarning(''); }, [owner]);
   useEffect(() => {
@@ -44,7 +42,7 @@ export function useCloudTracking(owner) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000);
     const now = Date.now();
-    const candidates = buildDogs(rows, [], now).filter(dog => dog.stale && !dog.charging
+    const candidates = buildDogs(rows, [], now).filter(dog => dog.stale
       && now - (gpsQueryTimes.current.get(dog.id) ?? 0) >= 60000);
     Promise.all(candidates.map(async dog => {
       try {
@@ -57,46 +55,6 @@ export function useCloudTracking(owner) {
     })).finally(() => clearTimeout(timeout));
     return () => { active = false; controller.abort(); clearTimeout(timeout); };
   }, [owner, rows, masters]);
-  const fixedRefreshRef = useRef(() => {});
-
-  // Settings must not wait for a potentially large telemetry download.
-  useEffect(() => {
-    if (!owner || !supabase) return;
-    let active = true, busy = false, pending = false, controller;
-    setFixedLocations([]);
-    setWarning('');
-    async function refreshFixed() {
-      if (!active || document.visibilityState === 'hidden' || !navigator.onLine) return;
-      if (busy) { pending = true; return; }
-      busy = true;
-      controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
-      try {
-        const fixed = await readFixedLocations(supabase, null, controller.signal);
-        if (!active || controller.signal.aborted) return;
-        setWarning(fixed.warning);
-        if (!fixed.warning) setFixedLocations(fixed.locations);
-      } catch {
-        if (active) setWarning('固定位置設定讀取失敗；保留上次成功讀取的設定。');
-      } finally {
-        clearTimeout(timeout); busy = false;
-        if (active && pending) { pending = false; refreshFixed(); }
-      }
-    }
-    fixedRefreshRef.current = refreshFixed;
-    refreshFixed();
-    const interval = setInterval(refreshFixed, 10000);
-    const resume = () => { if (document.visibilityState === 'visible') refreshFixed(); };
-    document.addEventListener('visibilitychange', resume);
-    window.addEventListener('online', resume);
-    return () => {
-      active = false; controller?.abort(); clearInterval(interval);
-      fixedRefreshRef.current = () => {};
-      document.removeEventListener('visibilitychange', resume);
-      window.removeEventListener('online', resume);
-    };
-  }, [owner]);
-
   useEffect(() => {
     if (!owner || !supabase) return;
     let active = true, busy = false, cursor = null, reconciledAt = 0, knownMasters = '';
@@ -149,9 +107,8 @@ export function useCloudTracking(owner) {
     };
   }, [owner]);
   const refresh = useCallback(() => refreshRef.current(), []);
-  const refreshFixed = useCallback(() => fixedRefreshRef.current(), []);
-  return { rows, masters, fixedLocations, historicalFixes: historicalFixes.filter(row => masters.includes(row.master_id)),
-    loading, progress, lastSync, error, warning: warning || gpsWarning, refresh, refreshFixed };
+  return { rows, masters, historicalFixes: historicalFixes.filter(row => masters.includes(row.master_id)),
+    loading, progress, lastSync, error, warning: gpsWarning, refresh };
 }
 
 export function usePreferences(owner) {
@@ -164,12 +121,10 @@ export function usePreferences(owner) {
         aliases: saved.aliases && typeof saved.aliases === 'object' ? saved.aliases : {},
         hidden: saved.visibilityVersion === 2 && Array.isArray(saved.hidden) ? saved.hidden.filter(Number.isInteger) : defaultHidden,
         visibilityVersion: 2,
-        showML: saved.showML === true,
-        applyFixed: saved.applyFixed !== false,
         trails: saved.trails !== false,
         windowMinutes: [3, 10, 30, 60, 360, 1440].includes(saved.windowMinutes) ? saved.windowMinutes : 10,
       };
-    } catch { return { aliases: {}, hidden: defaultHidden, visibilityVersion: 2, showML: false, applyFixed: true, trails: true, windowMinutes: 10 }; }
+    } catch { return { aliases: {}, hidden: defaultHidden, visibilityVersion: 2, trails: true, windowMinutes: 10 }; }
   });
   const save = patch => setPreferences(old => {
     const value = { ...old, ...patch };

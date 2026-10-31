@@ -1,7 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { supabase } from '../lib/supabaseClient';
 import { activityHistory, dogName, formatTime } from '../tracking/telemetry';
-import { environmentEvidence, environmentLabel } from '../ml/Environment';
 import { Metrics } from './DogCard';
 
 function ActivityChart({ rows, id, now }) {
@@ -16,77 +14,7 @@ function ActivityChart({ rows, id, now }) {
   </section>;
 }
 
-function FixedLocation({ dog, location, owner, onSaved }) {
-  const [editing, setEditing] = useState(false), [password, setPassword] = useState('');
-  const [unlock, setUnlock] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const [name, setName] = useState(location?.name ?? ''), [latitude, setLatitude] = useState(location?.latitude ?? '');
-  const [longitude, setLongitude] = useState(location?.longitude ?? ''), [enabled, setEnabled] = useState(location?.enabled ?? true);
-  const active = useRef(true);
-  useEffect(() => {
-    if (editing) return;
-    setName(location?.name ?? ''); setLatitude(location?.latitude ?? '');
-    setLongitude(location?.longitude ?? ''); setEnabled(location?.enabled ?? true);
-  }, [location, editing]);
-  useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
-  useEffect(() => {
-    if (!unlock) return;
-    const timeout = setTimeout(() => { setUnlock(null); setEditing(false); setError('解鎖已逾時，請重新輸入密碼。'); }, Math.max(0, unlock.expiresAt - Date.now()));
-    return () => clearTimeout(timeout);
-  }, [unlock]);
-  useEffect(() => {
-    const lock = () => { if (document.visibilityState === 'hidden') { setUnlock(null); setEditing(false); setPassword(''); } };
-    document.addEventListener('visibilitychange', lock);
-    return () => document.removeEventListener('visibilitychange', lock);
-  }, []);
-  async function authorize(event) {
-    event.preventDefault(); setBusy(true); setError('');
-    try {
-      const { data: auth, error: authError } = await supabase.auth.getUser();
-      if (authError || auth.user?.id !== owner) throw new Error('請重新登入。');
-      const { data, error: failure } = await supabase.functions.invoke('unlock-fixed-location', {
-        body: { slave_id: dog.id, master_id: location?.master_id ?? dog.masterId, password },
-      });
-      if (failure || !data?.token || !Number.isFinite(data.expiresAt)) throw new Error('無法解鎖，請確認帳號密碼、網路與固定位置設定權限。');
-      if (active.current && document.visibilityState === 'visible') setUnlock(data);
-    } catch (failure) { if (active.current) setError(failure.message); }
-    finally { if (active.current) { setPassword(''); setBusy(false); } }
-  }
-  async function save(event) {
-    event.preventDefault(); setError('');
-    const lat = Number(latitude), lon = Number(longitude);
-    if (!name.trim() || !String(latitude).trim() || !String(longitude).trim() || !Number.isFinite(lat) || Math.abs(lat) > 90 || !Number.isFinite(lon) || Math.abs(lon) > 180) {
-      setError('請輸入位置名稱及有效的經緯度。'); return;
-    }
-    if (!unlock || unlock.expiresAt <= Date.now()) { setUnlock(null); setError('請重新輸入密碼解鎖。'); return; }
-    setBusy(true);
-    try {
-      const { error: failure } = await supabase.rpc('save_unlocked_fixed_location', {
-        p_token: unlock.token, p_slave_id: dog.id, p_master_id: location?.master_id ?? dog.masterId,
-        p_name: name.trim(), p_latitude: lat, p_longitude: lon, p_enabled: enabled,
-      });
-      if (failure) throw new Error('儲存失敗，請重新解鎖；可重新整理確認是否已儲存。');
-      if (active.current) { setEditing(false); onSaved(); }
-    } catch (failure) { if (active.current) setError(failure.message); }
-    finally { if (active.current) { setUnlock(null); setBusy(false); } }
-  }
-  return <section className="detail-section"><h3>固定位置設定</h3>
-    {!editing ? <><p>{location ? `${location.name} · ${location.enabled ? '已啟用' : '未啟用'}` : '尚未設定固定位置。'}</p>
-      {location && <p>{location.latitude}, {location.longitude}</p>}
-      <p>USB 充電一律使用已啟用的固定座標；「ML 室內推論」開關只控制室內推論，窗邊不套用。</p>
-      <button className="secondary" onClick={() => { setEditing(true); setError(''); }}>修改設定</button></>
-      : !unlock ? <form onSubmit={authorize}><p>輸入目前帳號密碼，驗證後可修改此犬隻的設定。</p>
-        <label>帳號密碼<input type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required disabled={busy} /></label>
-        <div className="form-actions"><button className="primary" disabled={busy}>{busy ? '驗證中…' : '解鎖'}</button><button type="button" className="secondary" disabled={busy} onClick={() => { setEditing(false); setPassword(''); }}>取消</button></div></form>
-      : <form onSubmit={save}><label>位置名稱<input value={name} onChange={e => setName(e.target.value)} maxLength={80} required disabled={busy} /></label>
-        <div className="form-grid"><label>緯度<input type="number" step="any" min="-90" max="90" value={latitude} onChange={e => setLatitude(e.target.value)} required disabled={busy} /></label>
-          <label>經度<input type="number" step="any" min="-180" max="180" value={longitude} onChange={e => setLongitude(e.target.value)} required disabled={busy} /></label></div>
-        <label className="check-label"><input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} disabled={busy} />啟用固定位置</label>
-        <div className="form-actions"><button className="primary" disabled={busy}>{busy ? '儲存中…' : '儲存'}</button><button type="button" className="secondary" disabled={busy} onClick={() => { setUnlock(null); setEditing(false); }}>取消</button></div></form>}
-    {error && <p role="alert" className="error">{error}</p>}
-  </section>;
-}
-
-export default function DogDetails({ dog, rows, now, aliases, onAlias, onClose, fixedLocations, owner, onRefresh, history = false, showML = false }) {
+export default function DogDetails({ dog, rows, now, aliases, onAlias, onClose, history = false }) {
   const panel = useRef(null);
   const [alias, setAlias] = useState(aliases[dog.id] ?? '');
   const [aliasBusy, setAliasBusy] = useState(false), [aliasError, setAliasError] = useState(''), [aliasSaved, setAliasSaved] = useState(false);
@@ -116,9 +44,7 @@ export default function DogDetails({ dog, rows, now, aliases, onAlias, onClose, 
         <div><dt>衛星</dt><dd>{packet.satellites ?? '—'}</dd></div><div><dt>HDOP</dt><dd>{packet.hdop ?? '—'}</dd></div>
         <div><dt>RSSI</dt><dd>{packet.rssi == null ? '—' : `${packet.rssi} dBm`}</dd></div><div><dt>SNR</dt><dd>{packet.snr == null ? '—' : `${packet.snr} dB`}</dd></div>
         <div><dt>USB</dt><dd>{packet.usb_present === 1 ? '已連接' : packet.usb_present === 0 ? '未連接' : '未知'}</dd></div><div><dt>活動量</dt><dd>{packet.activity_valid && packet.activity != null ? packet.activity.toFixed(3) : '尚無有效資料'}</dd></div></dl>
-      {showML && <section className="detail-section"><h3>ML 推論結果</h3><p>{environmentLabel(dog.environment, now)}</p>{dog.environment && <><p>{environmentEvidence(dog.environment)}</p><p>判斷區間：{formatTime(dog.environment.windowStart)} 至 {formatTime(dog.environment.windowEnd)} · {dog.environment.samples} 筆取樣</p></>}</section>}
       <ActivityChart rows={rows} id={dog.id} now={now} />
-      {!history && <FixedLocation dog={dog} owner={owner} location={fixedLocations.find(row => row.slave_id === dog.id)} onSaved={onRefresh} />}
       <section className="detail-section"><h3>犬隻名稱</h3><form className="alias-form" onSubmit={async e => {
         e.preventDefault(); setAliasBusy(true); setAliasError(''); setAliasSaved(false);
         try { await onAlias(dog.id, alias.trim()); aliasDirty.current = false; setAliasSaved(true); }
