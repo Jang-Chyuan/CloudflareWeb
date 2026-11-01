@@ -4,7 +4,7 @@ import { mockGoogleMaps } from './googleMapsMock';
 test.beforeEach(async ({ page }) => { await mockGoogleMaps(page); });
 
 const owner = '00000000-0000-4000-8000-000000000010';
-async function mockCloud(page, clustered = false) {
+async function mockCloud(page, clustered = false, remote = false) {
   const now = Date.now();
   const user = { id: owner, email: 'test@example.com', aud: 'authenticated', role: 'authenticated', app_metadata: {}, user_metadata: {}, created_at: new Date(now).toISOString() };
   const token = `${Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url')}.${Buffer.from(JSON.stringify({ sub: owner, role: 'authenticated', exp: Math.floor(now / 1000) + 3600 })).toString('base64url')}.test_signature`;
@@ -16,6 +16,7 @@ async function mockCloud(page, clustered = false) {
   });
   const rows = clustered ? [4, 6, 8, 108].map((slave, i) => packet(i + 1, slave, 15000, 25033000 + i * 15))
     : [packet(1, 2, 45000), packet(2, 2, 15000, 25033200), packet(3, 9, 2160000)];
+  if (remote) rows.splice(0, rows.length, { ...packet(1, 102, 15000), master_id: 201 });
   const requested = [];
   const names = [];
   await page.route('http://127.0.0.1:54321/**', async route => {
@@ -24,8 +25,9 @@ async function mockCloud(page, clustered = false) {
     if (url.pathname.endsWith('/token')) body = { access_token: token, refresh_token: 'test_refresh_token', token_type: 'bearer', expires_in: 3600, user };
     else if (url.pathname.endsWith('/user')) body = user;
     else if (url.pathname.endsWith('/logout')) body = {};
-    else if (url.pathname.endsWith('/device_members')) body = Number(url.searchParams.get('offset')) > 0 ? [] : [{ gateway_id: 'master_5', slave_id: null }];
+    else if (url.pathname.endsWith('/device_members')) body = Number(url.searchParams.get('offset')) > 0 ? [] : [{ gateway_id: remote ? 'master_201' : 'master_5', slave_id: null }];
     else if (url.pathname.endsWith('/dog_telemetry')) body = url.searchParams.has('or') ? [] : rows;
+    else if (url.pathname.endsWith('/device_commands')) body = [];
     else if (url.pathname.endsWith('/dog_health')) body = [{
       event_id: '00000000-0000-4000-8000-000000000099', master_id: 5,
       slave_id: Number(url.searchParams.get('slave_id')?.replace('eq.', '')),
@@ -182,4 +184,81 @@ test('mobile layout stays within viewport and login failure stays visible', asyn
   await page.getByRole('button', { name: '登入', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('登入失敗');
   expect(failures).toEqual([]);
+});
+
+
+test('remote tracking and sleep write commands without claiming execution', async ({ page }) => {
+  await mockCloud(page, false, true);
+  const submitted = [];
+  await page.route('**/rest/v1/rpc/create_device_command', async route => {
+    const body = route.request().postDataJSON(); submitted.push(body);
+    await route.fulfill({ json: { id: crypto.randomUUID(), action: body.p_action, status: 'queued', expires_at: new Date(Date.now() + 60000).toISOString() } });
+  });
+  await login(page, 1);
+  await expect(page.locator('.command-buttons')).toHaveCount(0);
+  await page.locator('.dog-map-icon').click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.getByRole('button', { name: '要求開始追蹤', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Slave 102 遠端控制' })).toContainText('追蹤命令已送出，等待裝置確認');
+  await page.getByRole('button', { name: '要求省電待機', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Slave 102 遠端控制' })).toContainText('待機命令已送出，等待裝置確認');
+  expect(submitted.map(row => [row.p_master_id, row.p_slave_id, row.p_action])).toEqual([[201, 102, 'tracking'], [201, 102, 'sleep']]);
+  expect(submitted[0].p_request_id).not.toBe(submitted[1].p_request_id);
+  await page.getByRole('dialog').locator('.detail-header button').click();
+  await expect(page.locator('.command-buttons')).toHaveCount(0);
+  await page.locator('.dog-map-icon').click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole('button', { name: '要求開始追蹤', exact: true })).toBeVisible();
+});
+
+test('ambiguous command failure retries with same UUID and offline disables buttons', async ({ page, context }) => {
+  await mockCloud(page, false, true);
+  const submitted = [];
+  await page.route('**/rest/v1/rpc/create_device_command', async route => {
+    submitted.push(route.request().postDataJSON());
+    if (submitted.length === 1) return route.fulfill({ status: 403, json: { code: '42501', message: 'Device access denied' } });
+    return route.fulfill({ json: { id: crypto.randomUUID(), action: 'tracking', status: 'queued', expires_at: new Date(Date.now() + 60000).toISOString() } });
+  });
+  await login(page, 1);
+  await expect(page.locator('.command-buttons')).toHaveCount(0);
+  await page.locator('.dog-map-icon').click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  const button = page.getByRole('button', { name: '要求開始追蹤', exact: true });
+  await button.click();
+  await expect(page.getByRole('alert')).toContainText('送出未確認');
+  await button.click();
+  await expect(page.getByRole('region', { name: 'Slave 102 遠端控制' })).toContainText('等待裝置確認');
+  expect(submitted[0].p_request_id).toBe(submitted[1].p_request_id);
+  await context.setOffline(true);
+  await expect(button).toBeDisabled();
+  await context.setOffline(false);
+  await expect(button).toBeEnabled();
+});
+
+test('other devices have no remote control buttons', async ({ page }) => {
+  await mockCloud(page);
+  await login(page);
+  await expect(page.getByRole('button', { name: '要求開始追蹤', exact: true })).toHaveCount(0);
+});
+
+test('device mode uses confirmed reported mode and Taiwan confirmation time', async ({ page }) => {
+  await mockCloud(page, false, true);
+  let command = { id: 'mode-test', action: 'tracking', status: 'queued', reported_mode: 1,
+    completed_at: '2026-11-01T02:00:00Z', expires_at: '2099-01-01T00:00:00Z' };
+  await page.route('**/rest/v1/device_commands*', route => route.fulfill({ json: [command] }));
+  await login(page, 1);
+  await page.locator('.dog-map-icon').click();
+  const mode = page.locator('.device-mode');
+  await expect(mode).toContainText('未知');
+  await expect(page.locator('.command-buttons .primary')).toHaveCount(0);
+  command = { ...command, status: 'confirmed' };
+  await expect(mode).toContainText('追蹤中');
+  await expect(mode).toContainText('10:00:00');
+  await expect(mode.locator('.device-mode-tracking')).toHaveCount(1);
+  command = { ...command, action: 'sleep', reported_mode: 0 };
+  await expect(mode).toContainText('省電待機');
+  await expect(mode.locator('.device-mode-tracking')).toHaveCount(0);
+  command = { ...command, status: 'expired' };
+  await expect(mode).toContainText('未知');
+  await expect(page.locator('.device-commands')).toContainText('未收到確認，裝置模式未知');
 });

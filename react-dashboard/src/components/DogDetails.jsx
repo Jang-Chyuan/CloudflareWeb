@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { activityHistory, dogName, formatTime } from '../tracking/telemetry';
 import { Metrics } from './DogCard';
+import DeviceCommands from './DeviceCommands';
 
 function ActivityChart({ rows, id, now }) {
   const values = useMemo(() => activityHistory(rows, id, now), [rows, id, now]);
@@ -40,6 +41,7 @@ export default function DogDetails({ dog, rows, now, aliases, onAlias, onClose, 
   return <div className="modal-backdrop" onClick={onClose}><section className="detail-modal" ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="dog-detail-title" onClick={e => e.stopPropagation()}>
     <header className="detail-header"><div><span className="eyebrow">SLAVE {dog.id}</span><h2 id="dog-detail-title">{dogName(dog.id, aliases)}</h2></div><button className="icon-button" aria-label="關閉詳細資訊" onClick={onClose}>×</button></header>
     <div className="detail-body"><p>來源：經 Master {dog.masterId} · 雲端</p><p className={dog.stale ? 'warning' : ''}>{dog.status}{dog.retained ? ' · 最後有效位置，非最新定位' : ''}</p><Metrics dog={dog} />
+      {!history && dog.masterId === 201 && dog.id === 102 && <DeviceCommands />}
       <dl className="detail-grid"><div><dt>最後封包</dt><dd>{formatTime(dog.lastPacketAt)}</dd></div><div><dt>有效定位</dt><dd>{formatTime(dog.lastPositionAt)}</dd></div>
         <div><dt>衛星</dt><dd>{packet.satellites ?? '—'}</dd></div><div><dt>HDOP</dt><dd>{packet.hdop ?? '—'}</dd></div>
         <div><dt>RSSI</dt><dd>{packet.rssi == null ? '—' : `${packet.rssi} dBm`}</dd></div><div><dt>SNR</dt><dd>{packet.snr == null ? '—' : `${packet.snr} dB`}</dd></div>

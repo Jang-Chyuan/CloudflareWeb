@@ -5,7 +5,7 @@
 ## 功能
 
 - 使用 DogTracker App 的 Supabase Email／密碼帳號登入、恢復登入及登出。
-- 每 30 秒讀取已授權 Master 的 Slave 資料，每隻狗合併為一個位置。
+- 每 5 秒讀取已授權 Master 的 Slave 資料，每隻狗合併為一個位置。
 - 地圖跟隨、單隻顯示／隱藏、過去 3 分鐘至 24 小時的移動路徑。
 - 顯示最新封包、最後有效定位、速度、電量、衛星、HDOP、RSSI、SNR、USB 與活動量。
 - 沿用 DogTracker 的環境分類模型，使用已結束的兩分鐘取樣視窗。
@@ -94,7 +94,7 @@ Slave 座標除以 1,000,000，速度與 HDOP 除以 100，活動量除以 1,000
 
 即時清單保留最近 24 小時資料。GPS 為 0,0 或無效時保留最後有效位置，同時顯示最新封包狀態；超過 35 分鐘未更新時顯示「× 未更新／最後顯示位置」，並保留最後有效位置。軌跡不跨越 GPS 缺失、超過 2 分鐘的間隔或 Master 切換，沿用三點平滑與高速權重。USB 已連接或近期室內／窗邊結果符合原規則時可使用固定位置。
 
-首次讀取最近 24 小時，之後每 30 秒從上次完成時間前 5 分鐘補查，每 10 分鐘重新核對 24 小時。背景分頁暫停更新，回到頁面補讀。單次查詢最多 25 萬筆、兩分鐘逾時，逾時／失敗顯示錯誤且保留上一份完整資料。
+首次讀取最近 24 小時，之後每 5 秒從上次完成時間前 5 分鐘補查，每 10 分鐘重新核對 24 小時。背景分頁暫停更新，回到頁面補讀。單次查詢最多 25 萬筆、兩分鐘逾時，逾時／失敗顯示錯誤且保留上一份完整資料。
 
 網頁的封包資料保存在記憶體，重新整理會再讀取，未移植手機 SQLite 或 Android 背景服務。歷史回放顯示查詢到的 GPS 軌跡，不套用手機歷史的固定位置分類。歷史詳細資訊的活動量只涵蓋此次已查詢資料，GPS 速度不是手機位置推算的速度。
 
@@ -111,3 +111,19 @@ npm.cmd run build
 瀏覽器測試使用獨立測試 API URL 與模擬帳號／封包，不讀寫正式 Supabase。涵蓋登入、犬隻地圖、跟隨、隱藏、詳細資訊、解鎖失敗、歷史回放、匯出、登出與手機版版面。Windows 優先使用已安裝的 Chrome／Edge；其他環境可執行 `npx playwright install chromium` 安裝測試瀏覽器。
 
 模型與推論邏輯由參考專案的 `src/ml` 移植，僅將 CommonJS 匯出轉為 ES module。
+
+
+## Master 201 / Slave 102 tracking／sleep
+
+犬隻卡片只在 Master 201／Slave 102 顯示「開始追蹤 tracking」「停止追蹤 sleep」。網頁透過登入 session 呼叫 RPC create_device_command，成功寫入 public.device_commands 後顯示等待 Master，每 3 秒更新最新命令狀態。離線不接受新命令；不會離線排程。相同動作在 HTTP 結果不明時重試沿用 request_id 去重。命令有效期 60 秒。
+
+先在 Supabase SQL Editor 執行 supabase/migrations/202611010001_device_commands.sql，再部署前端。此 migration 相容已核對的既有 device_commands 表，保留資料與 radio_command_id identity。也可在已登入並連結正確專案的 Supabase CLI 檢查 db push --dry-run 後執行 db push；不要將其他未確認的 migration 一起部署。
+
+權限沿用 device_members：沿用既有網站與 slave_names 的 Master 層級授權：使用者在 device_members 有 gateway_id=master_201 即可控制此 Master 的 Slave 102；slave_id 不額外作控制限制。目前線上 master_201 的 membership 使用預設 slave_id=4，不能誤判為無 Master 權限。若日後要區分每個 Slave 的控制權，應另外設計控制授權欄位。authenticated 僅可 SELECT，不可直接 INSERT／UPDATE。RPC 從 auth.uid() 取得操作者，驗證目標與授權後寫入，service_role 可供後續裝置端函式更新狀態；前端不含 secret key。
+
+本次範圍是網頁送命令入表。Master 拉取、租約及 ACK 結果回報尚須另外實作，沒有消費端時 queued 不代表 Slave 已執行。畫面可顯示 queued 命令本地到期，但資料庫 expired 狀態需由未來消費端／排程維護。每次明確的新操作建立新命令，不自動取代舊命令。radio_command_id 沿用資料庫 identity，Master 橋接層須使用此 ID，並避免與自動健康檢查 ID 衝突；網頁不自行產生無線命令 ID。sleep 停止連續追蹤並保留定期回報。
+
+已於 2026-11-01 對 dog-gps 專案套用上述 SQL（透過 CLI db query --file，未變更 migration history）。線上回滾驗證腳本：tests/device-commands.rollback.sql；可驗證兩種動作、重試去重、錯誤目標、RLS 與未授權拒絕。測試會回滾所有命令資料，但 identity sequence 可能前進。此版本前端尚未發布至 Cloudflare。
+
+
+命令介面：要求開始追蹤／要求省電待機使用中性色外框，與裝置模式分開呈現。只有最新命令 status=confirmed、reported_mode 有效且 completed_at 可解析時顯示已確認模式與台灣時間；等待、過期、失敗、離線或狀態讀取失敗時顯示未知。綠色僅用於已確認的追蹤中。

@@ -96,7 +96,7 @@ export function useCloudTracking(owner) {
     }
     refreshRef.current = () => refresh(true);
     refresh();
-    const interval = setInterval(() => refresh(), 30000);
+    const interval = setInterval(() => refresh(), 5000);
     const resume = () => { if (document.visibilityState === 'visible') refresh(); };
     document.addEventListener('visibilitychange', resume);
     window.addEventListener('online', resume);

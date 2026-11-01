@@ -59,7 +59,7 @@ function Dashboard({ session }) {
   }
   return <div className="app-shell">
     <header className="app-header"><a className="brand" href="#" onClick={e => { e.preventDefault(); setTab('live'); }}><span className="brand-paw">🐾</span> DogWebTracker <span className="web-badge">WEB</span></a>
-      <nav aria-label="主要導覽"><button className={tab === 'live' ? 'active' : ''} onClick={() => setTab('live')}>◎ 即時追蹤</button><button className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>↝ 歷史軌跡</button></nav>
+      <nav aria-label="主要導覽"><button className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>↝ 歷史軌跡</button></nav>
       <div className="account"><span title={session.user.email}>{session.user.email}</span><button className="secondary" disabled={signingOut} onClick={logout}>{signingOut ? '登出中…' : '登出'}</button></div>
     </header>
     {(cloud.error || authError) && <div className="error banner" role="alert">{cloud.error || authError}<button className="text-button" disabled={cloud.loading} onClick={cloud.refresh}>重新讀取</button></div>}
