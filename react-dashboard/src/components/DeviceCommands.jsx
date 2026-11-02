@@ -53,6 +53,7 @@ export default function DeviceCommands() {
   return <section className="device-commands" aria-label="Slave 102 遠端控制">
     <div className="device-mode" role="status" aria-live="polite"><span>裝置模式：</span><strong className={mode.tracking ? 'device-mode-tracking' : ''}>{mode.label}</strong>
       {confirmedTime && <p>確認時間：{confirmedTime}（台灣時間）</p>}</div>
+    <p className="command-note">控制通道：Master 201 → Slave 102</p>
     <h3 className="command-heading">命令操作</h3>
     <div className="command-buttons"><button className="secondary" disabled={busy || !online} onClick={() => send('tracking')}>要求開始追蹤</button>
       <button className="secondary" disabled={busy || !online} onClick={() => send('sleep')}>要求省電待機</button></div>
