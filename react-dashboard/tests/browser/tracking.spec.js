@@ -190,9 +190,12 @@ test('mobile layout stays within viewport and login failure stays visible', asyn
 test('remote tracking and sleep write commands without claiming execution', async ({ page }) => {
   await mockCloud(page, false, true);
   const submitted = [];
+  let latest = null;
+  await page.route('**/rest/v1/device_commands*', route => route.fulfill({ json: latest ? [latest] : [] }));
   await page.route('**/rest/v1/rpc/create_device_command', async route => {
     const body = route.request().postDataJSON(); submitted.push(body);
-    await route.fulfill({ json: { id: crypto.randomUUID(), action: body.p_action, status: 'queued', expires_at: new Date(Date.now() + 60000).toISOString() } });
+    latest = { id: crypto.randomUUID(), action: body.p_action, request_id: body.p_request_id, status: 'queued', expires_at: new Date(Date.now() + 60000).toISOString() };
+    await route.fulfill({ json: latest });
   });
   await login(page, 1);
   await expect(page.locator('.command-buttons')).toHaveCount(0);
@@ -200,10 +203,22 @@ test('remote tracking and sleep write commands without claiming execution', asyn
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.getByRole('button', { name: '要求開始追蹤', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Slave 102 遠端控制' })).toContainText('追蹤命令已送出，等待裝置確認');
+  await expect(page.getByRole('button', { name: '要求開始追蹤', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '要求省電待機', exact: true })).toBeDisabled();
+  latest = { ...latest, status: 'confirmed', reported_mode: 1, completed_at: new Date().toISOString() };
+  await expect(page.getByRole('button', { name: '要求省電待機', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: '要求省電待機', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Slave 102 遠端控制' })).toContainText('待機命令已送出，等待裝置確認');
   expect(submitted.map(row => [row.p_master_id, row.p_slave_id, row.p_action])).toEqual([[201, 102, 'tracking'], [201, 102, 'sleep']]);
   expect(submitted[0].p_request_id).not.toBe(submitted[1].p_request_id);
+  latest = { ...latest, status: 'unconfirmed', completed_at: new Date().toISOString() };
+  const retry = page.getByRole('button', { name: '重試省電待機命令', exact: true });
+  await expect(retry).toBeVisible();
+  await retry.click();
+  expect(submitted[2].p_action).toBe('sleep');
+  expect(submitted[2].p_request_id).not.toBe(submitted[1].p_request_id);
+  await expect(page.getByRole('button', { name: '要求開始追蹤', exact: true })).toBeDisabled();
+  await expect(retry).toHaveCount(0);
   await page.getByRole('dialog').locator('.detail-header button').click();
   await expect(page.locator('.command-buttons')).toHaveCount(0);
   await page.locator('.dog-map-icon').click();
@@ -226,13 +241,14 @@ test('ambiguous command failure retries with same UUID and offline disables butt
   const button = page.getByRole('button', { name: '要求開始追蹤', exact: true });
   await button.click();
   await expect(page.getByRole('alert')).toContainText('送出未確認');
-  await button.click();
+  await expect(button).toBeDisabled();
+  await page.getByRole('button', { name: '重試追蹤命令', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Slave 102 遠端控制' })).toContainText('等待裝置確認');
   expect(submitted[0].p_request_id).toBe(submitted[1].p_request_id);
   await context.setOffline(true);
   await expect(button).toBeDisabled();
   await context.setOffline(false);
-  await expect(button).toBeEnabled();
+  await expect(button).toBeDisabled();
 });
 
 test('other devices have no remote control buttons', async ({ page }) => {

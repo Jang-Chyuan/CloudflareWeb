@@ -1,4 +1,4 @@
-export const COMMAND_FIELDS = 'id,master_id,slave_id,action,status,created_at,expires_at,completed_at,reported_mode,error_code';
+export const COMMAND_FIELDS = 'id,master_id,slave_id,action,status,created_at,expires_at,completed_at,reported_mode,error_code,request_id';
 export const pendingCommand = command => command && ['queued', 'claimed'].includes(command.status);
 export function commandLabel(command, now = Date.now()) {
   if (!command) return '尚未送出命令';
