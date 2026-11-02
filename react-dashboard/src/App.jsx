@@ -5,6 +5,7 @@ import { buildDogs, buildRoutes, retainDogPositions } from './tracking/telemetry
 import { readPositionCache, savePositionCache } from './tracking/positionCache';
 import { useDogNames } from './hooks/useDogNames';
 import { useDogHealth } from './hooks/useDogHealth';
+import { useDogModes } from './hooks/useDogModes';
 import Login from './components/Login';
 import TrackingMap from './components/TrackingMap';
 import DogCard from './components/DogCard';
@@ -39,9 +40,11 @@ function Dashboard({ session }) {
   }, [dogs, cloud.masters, cloud.lastSync, session.user.id]);
   const routes = useMemo(() => buildRoutes(cloud.rows, now - preferences.windowMinutes * 60000, now), [cloud.rows, preferences.windowMinutes, now]);
   const health = useDogHealth(session.user.id, dogs);
+  const modes = useDogModes(session.user.id, dogs);
   const mapDogs = useMemo(() => dogs.map(dog => ({ ...dog, healthDisplay: health.health[dog.id] ?? null,
+    modeStatus: modes[`${dog.masterId}:${dog.id}`] ?? null,
     lastPositionAt: dog.gpsLastPositionAt ?? (dog.positionSource === 'gps' ? dog.lastPositionAt : null),
-  })), [dogs, health.health]);
+  })), [dogs, health.health, modes]);
   const filtered = dogs.filter(dog => `${names.aliases[dog.id] ?? ''} ${dog.id} Master ${dog.masterId}`.toLowerCase().includes(search.toLowerCase()));
   const selectedDog = details?.history ? details.dog : dogs.find(dog => dog.id === details?.id);
   const closeDetails = useCallback(() => setDetails(null), []);
@@ -76,7 +79,7 @@ function Dashboard({ session }) {
             <button className="text-button" onClick={() => { setFocus(null); save({ hidden: [] }); }}>顯示全部</button>
           </div></div>
           <TrackingMap dogs={mapDogs} routes={routes} hidden={preferences.hidden} focus={focus} aliases={names.aliases} showTrails={preferences.trails} onDetails={id => setDetails({ id })} viewKey="live" syncing={cloud.loading} />
-          <div className="map-footer"><span>🐕 點選犬隻圖示查看詳細資訊</span><span>× 超過 35 分鐘未更新或最新 GPS 無效，保留最後位置</span></div>
+          <div className="map-footer"><span>🐕 點選犬隻圖示查看詳細資訊</span><span>黃色：顯示最後有效位置；×：定位超過 35 分鐘未更新</span></div>
         </section><aside className="dog-list">
           <div className="dog-list-heading"><h2>犬隻 <span>{dogs.length}</span></h2><span>最近 24 小時</span></div>
           <label className="sr-only" htmlFor="dog-search">搜尋犬隻或 Master</label><input id="dog-search" className="dog-search" type="search" placeholder="搜尋犬隻或 Master…" value={search} onChange={e => setSearch(e.target.value)} />

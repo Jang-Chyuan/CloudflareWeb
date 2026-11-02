@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { labelStatus } from '../src/tracking/labelStatus.js';
+import { labelStatus, labelMode } from '../src/tracking/labelStatus.js';
 const at = Date.parse('2026-11-02T01:00:00Z');
 const dog = { id: 102, masterId: 201, lastPacketAt: at, lastPositionAt: at - 60000,
   battery: 79, packet: { received_at: at, rssi: -85 },
@@ -27,4 +27,36 @@ test('a later tracking status wins again even with no GPS fix', () => {
 test('historical map without health continues to use telemetry', () => {
   const {healthDisplay, ...historical} = dog;
   assert.equal(labelStatus(historical).source, 'dog_telemetry');
+});
+
+test('map mode uses confirmed commands and newer matching health reports', () => {
+  const command = { master_id: 201, slave_id: 102, status: 'confirmed', reported_mode: 1,
+    created_at: new Date(at).toISOString(), completed_at: new Date(at + 500).toISOString() };
+  const input = { ...dog, modeStatus: { ready: true, command } };
+  assert.equal(labelMode(input), '追蹤中');
+  const health = { ...dog.healthDisplay, received_at: new Date(at + 1000).toISOString(), mode: 0 };
+  assert.equal(labelMode({ ...input, healthDisplay: health }), '省電待機');
+  assert.equal(labelMode({ ...input, healthDisplay: { ...health, master_id: 7 } }), '追蹤中');
+  assert.equal(labelMode({ ...input, modeStatus: { ready: true, command: { ...command, reported_mode: 0 } } }), '省電待機');
+});
+
+test('map mode never assumes an unconfirmed request succeeded', () => {
+  for (const status of ['queued', 'claimed', 'unconfirmed', 'expired', 'rejected']) {
+    const command = { master_id: 201, slave_id: 102, status, reported_mode: 0,
+      created_at: new Date(at + 2000).toISOString(), completed_at: null };
+    assert.equal(labelMode({ ...dog, healthDisplay: { ...dog.healthDisplay, mode: 1 },
+      modeStatus: { ready: true, command } }), '未知');
+  }
+  assert.equal(labelMode(dog), '未知');
+  assert.equal(labelMode({ ...dog, modeStatus: { ready: false } }), '未知');
+  assert.equal(labelMode({ ...dog, healthDisplay: { ...dog.healthDisplay, mode: 0 },
+    modeStatus: { ready: true, command: null } }), '省電待機');
+});
+
+test('temporary mode read failure preserves a confirmed mode with an explicit qualifier', () => {
+  const command = { master_id: 201, slave_id: 102, status: 'confirmed', reported_mode: 1,
+    completed_at: new Date(at).toISOString() };
+  assert.equal(labelMode({ ...dog, modeStatus: { ready: false, command } }), '追蹤中（上次確認）');
+  assert.equal(labelMode({ ...dog, modeStatus: { ready: false, command: { ...command, reported_mode: 0 } } }), '省電待機（上次確認）');
+  assert.equal(labelMode({ ...dog, modeStatus: { ready: false, command: { ...command, status: 'unconfirmed' } } }), '未知');
 });

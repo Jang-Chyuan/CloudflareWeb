@@ -65,8 +65,11 @@ export function buildDogs(rows, fixedLocations = [], now = Date.now(), historica
   }).sort((a, b) => a.id - b.id);
 }
 
-export function positionLabel(dog) {
-  if (dog.stale || dog.lastDisplayed) return `× 未更新／最後顯示位置，${Number.isFinite(dog.lastPositionAt) ? formatTime(dog.lastPositionAt) : '時間未知'}${dog.fixedReason ? `／${dog.fixedReason}` : ''}`;
+export function positionLabel(dog, now = Date.now()) {
+  const state = positionDisplayState(dog, now);
+  if (state === 'retained') return `顯示最後有效位置，${formatTime(dog.lastPositionAt)}`;
+  if (state === 'unavailable') return '尚無有效定位';
+  if (state === 'expired') return `× 未更新／最後顯示位置，${Number.isFinite(dog.lastPositionAt) ? formatTime(dog.lastPositionAt) : '時間未知'}${dog.fixedReason ? `／${dog.fixedReason}` : ''}`;
   return '';
 }
 
@@ -147,3 +150,10 @@ export function formatTime(value) {
 
 export const dogColor = id => ['#E85F5C', '#397E9B', '#247A61', '#AC7B24', '#8B63A9', '#D17947'][(id - 1) % 6];
 export const dogName = (id, aliases) => aliases[id]?.trim() ? `${aliases[id].trim()}(${id})` : `狗 ${id}`;
+
+// Map presentation distinguishes a retained recent fix from an expired position.
+export function positionDisplayState(dog, now = Date.now()) {
+  if (!dog.position || !Number.isFinite(dog.lastPositionAt)) return 'unavailable';
+  if (now - dog.lastPositionAt > LIVE_WINDOW) return 'expired';
+  return dog.retained || dog.lastDisplayed || dog.stale ? 'retained' : 'current';
+}

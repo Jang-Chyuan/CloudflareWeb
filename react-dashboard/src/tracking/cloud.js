@@ -3,7 +3,7 @@ import { parseTelemetry, DAY, coordinate } from './telemetry';
 const FIELDS = 'event_id,master_id,slave_id,seq,received_at,payload,rssi,snr,upload_source,phone_received_at';
 export async function fetchDogHealth(client, masterId, slaveId, signal) {
   const { data, error } = await client.from('dog_health')
-    .select('event_id,master_id,slave_id,received_at,battery_pct,battery_valid,rssi')
+    .select('event_id,master_id,slave_id,received_at,battery_pct,battery_valid,rssi,mode')
     .eq('master_id', masterId).eq('slave_id', slaveId)
     .order('received_at', { ascending: false }).order('event_id', { ascending: false })
     .limit(1).abortSignal(signal);

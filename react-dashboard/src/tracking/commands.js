@@ -27,9 +27,9 @@ export async function createDeviceCommand(client, action, requestId) {
   if (!data?.id) throw new Error('命令回應不完整');
   return data;
 }
-export async function fetchLatestCommand(client, signal) {
+export async function fetchLatestCommand(client, signal, masterId = 201, slaveId = 102) {
   const { data, error } = await client.from('device_commands').select(COMMAND_FIELDS)
-    .eq('master_id', 201).eq('slave_id', 102).order('created_at', { ascending: false })
+    .eq('master_id', masterId).eq('slave_id', slaveId).order('created_at', { ascending: false })
     .order('id', { ascending: false }).limit(1).abortSignal(signal);
   if (error) throw error;
   return data?.[0] ?? null;

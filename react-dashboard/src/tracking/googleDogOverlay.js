@@ -1,5 +1,5 @@
-import { labelStatus } from './labelStatus';
-﻿import { dogColor, dogName, formatTime } from './telemetry';
+import { labelStatus, labelMode } from './labelStatus';
+﻿import { dogColor, dogName, formatTime, positionDisplayState } from './telemetry';
 import { placeDogLabel, labelLineEnd, spreadDogIcons } from './labels';
 
 export function createDogOverlay(maps, map, dogs, aliases, onDetails) {
@@ -13,17 +13,23 @@ export function createDogOverlay(maps, map, dogs, aliases, onDetails) {
       this.svg.classList.add('dog-connectors');
       this.root.appendChild(this.svg);
       this.items = dogs.map(dog => {
+        const positionState = positionDisplayState(dog);
         const icon = document.createElement('button');
-        icon.className = `dog-map-icon${dog.stale ? ' dog-map-stale' : ''}`;
+        icon.className = `dog-map-icon${positionState === 'expired' ? ' dog-map-stale' : positionState === 'retained' ? ' dog-map-retained' : ''}`;
         icon.title = dogName(dog.id, aliases);
         icon.setAttribute('aria-label', dogName(dog.id, aliases));
         const dot = document.createElement('span');
         dot.className = 'dog-map-dot';
         dot.style.background = dogColor(dog.id);
         dot.textContent = '🐕';
-        if (dog.stale) {
+        if (positionState === 'expired') {
           const cross = document.createElement('span');
           cross.className = 'dog-stale-cross'; cross.textContent = '×'; dot.appendChild(cross);
+        }
+        if (positionState === 'retained') {
+          const warning = document.createElement('span');
+          warning.className = 'dog-retained-warning'; warning.textContent = '!';
+          warning.title = '顯示最後有效位置'; dot.appendChild(warning);
         }
         icon.appendChild(dot);
         icon.onclick = () => onDetails(dog.id);
@@ -34,12 +40,18 @@ export function createDogOverlay(maps, map, dogs, aliases, onDetails) {
         const { packetAt, battery, rssi } = labelStatus(dog);
         for (const text of [
           `名字：${dogName(dog.id, aliases)}`,
+          `裝置模式：${labelMode(dog)}`,
           `最後封包：${formatTime(packetAt)}`,
           `電量：${Number.isFinite(battery) ? `${battery}%` : '—'}`,
           `RSSI：${Number.isFinite(rssi) ? `${rssi} dBm` : '—'}`,
           `最後定位：${formatTime(dog.lastPositionAt)}`,
         ]) {
           const row = document.createElement('div'); row.textContent = text; label.appendChild(row);
+        }
+        if (positionState === 'retained') {
+          const warning = document.createElement('div');
+          warning.className = 'dog-retained-note'; warning.textContent = '顯示最後有效位置';
+          label.appendChild(warning);
         }
         this.root.append(icon, label);
         return { dog, icon, label, color: dogColor(dog.id) };

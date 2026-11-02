@@ -243,23 +243,34 @@ test('other devices have no remote control buttons', async ({ page }) => {
 
 test('device mode uses confirmed reported mode and Taiwan confirmation time', async ({ page }) => {
   await mockCloud(page, false, true);
-  let command = { id: 'mode-test', action: 'tracking', status: 'queued', reported_mode: 1,
+  let command = { id: 'mode-test', master_id: 201, slave_id: 102, action: 'tracking', status: 'queued', reported_mode: 1,
     completed_at: '2026-11-01T02:00:00Z', expires_at: '2099-01-01T00:00:00Z' };
-  await page.route('**/rest/v1/device_commands*', route => route.fulfill({ json: [command] }));
+  let readFailure = false;
+  await page.route('**/rest/v1/device_commands*', route => readFailure
+    ? route.fulfill({ status: 403, json: { message: 'Temporary read failure' } })
+    : route.fulfill({ json: [command] }));
   await login(page, 1);
+  await expect(page.locator('.dog-map-label')).toContainText('裝置模式：未知');
   await page.locator('.dog-map-icon').click();
   const mode = page.locator('.device-mode');
   await expect(mode).toContainText('未知');
   await expect(page.locator('.command-buttons .primary')).toHaveCount(0);
   command = { ...command, status: 'confirmed' };
   await expect(mode).toContainText('追蹤中');
+  await expect(page.locator('.dog-map-label')).toContainText('裝置模式：追蹤中');
   await expect(mode).toContainText('10:00:00');
   await expect(mode.locator('.device-mode-tracking')).toHaveCount(1);
+  readFailure = true;
+  await expect(page.locator('.dog-map-label')).toContainText('裝置模式：追蹤中（上次確認）');
+  readFailure = false;
+  await expect(page.locator('.dog-map-label')).not.toContainText('上次確認');
   command = { ...command, action: 'sleep', reported_mode: 0 };
   await expect(mode).toContainText('省電待機');
+  await expect(page.locator('.dog-map-label')).toContainText('裝置模式：省電待機');
   await expect(mode.locator('.device-mode-tracking')).toHaveCount(0);
   command = { ...command, status: 'expired' };
   await expect(mode).toContainText('未知');
+  await expect(page.locator('.dog-map-label')).toContainText('裝置模式：未知');
   await expect(page.locator('.device-commands')).toContainText('未收到確認，裝置模式未知');
 });
 
@@ -286,4 +297,25 @@ test('Master 5 access alone does not grant control of Slave 102 through Master 2
   await page.locator('.dog-map-icon').click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await expect(page.locator('.device-commands')).toHaveCount(0);
+});
+
+test('map distinguishes normal GPS, retained recent GPS and expired GPS', async ({page}) => {
+  await mockCloud(page,true);
+  const now=Date.now();
+  const row=(id,slave,age,lat)=>({event_id:'00000000-0000-4000-8000-'+String(id).padStart(12,'0'),master_id:5,slave_id:slave,seq:id,received_at:new Date(now-age).toISOString(),
+    payload:{lat,lon:lat?121565000:0,batteryPercentage:80,batteryValid:1},rssi:-70,snr:5});
+  const rows=[row(101,4,5000,25033000),row(102,6,240000,25033500),row(103,6,5000,0),row(104,8,36*60000,25034000),row(105,8,5000,0)];
+  await page.route('**/rest/v1/dog_telemetry*',route=>route.fulfill({json:new URL(route.request().url()).searchParams.has('or')?[]:rows}));
+  await login(page,3);
+  const normal=page.locator('.dog-map-icon[aria-label="狗 4"]');
+  const retained=page.locator('.dog-map-icon[aria-label="狗 6"]');
+  const expired=page.locator('.dog-map-icon[aria-label="狗 8"]');
+  await expect(normal).not.toHaveClass(/dog-map-stale|dog-map-retained/);
+  await expect(retained).toHaveClass(/dog-map-retained/);
+  await expect(retained.locator('.dog-stale-cross')).toHaveCount(0);
+  await expect(retained.locator('.dog-retained-warning')).toHaveText('!');
+  await expect(page.locator('.dog-map-label').filter({hasText:'狗 6'})).toContainText('顯示最後有效位置');
+  await expect(expired.locator('.dog-stale-cross')).toHaveText('×');
+  await page.setViewportSize({width:390,height:844});
+  await expect(retained).toBeVisible();
 });

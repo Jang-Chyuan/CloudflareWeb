@@ -129,3 +129,5 @@ npm.cmd run build
 命令介面：要求開始追蹤／要求省電待機使用中性色外框，與裝置模式分開呈現。只有最新命令 status=confirmed、reported_mode 有效且 completed_at 可解析時顯示已確認模式與台灣時間；等待、過期、失敗、離線或狀態讀取失敗時顯示未知。綠色僅用於已確認的追蹤中。
 
 Map label status: the newer report for the same Master/Slave supplies packet time, battery and RSSI (dog_telemetry vs dog_health, compared by received_at). GPS always uses the last valid dog_telemetry fix; names still use slave_names. Invalid fields in the selected report remain unavailable rather than borrowing older values.
+
+地圖定位提示：最新 GPS 有效時顯示正常圖示；GPS 無效但最後有效位置在 35 分鐘內，顯示黃色驚嘆號與「顯示最後有效位置」；最後有效位置超過 35 分鐘才顯示 ×。健康回報不會刷新 GPS 有效時間。

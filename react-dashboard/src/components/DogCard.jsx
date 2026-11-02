@@ -1,5 +1,5 @@
 import React from 'react';
-import { dogColor, dogName, formatTime, positionLabel } from '../tracking/telemetry';
+import { dogColor, dogName, formatTime, positionLabel, positionDisplayState } from '../tracking/telemetry';
 
 export function Metrics({ dog }) {
   return <div className="dog-metrics">
@@ -10,16 +10,17 @@ export function Metrics({ dog }) {
 
 export default function DogCard({ dog, aliases, hidden, following, onFollow, onToggle, onDetails, now }) {
   const name = dogName(dog.id, aliases);
+  const positionState = positionDisplayState(dog, now);
   return <article className={`dog-card ${following ? 'following' : ''} ${hidden ? 'dog-hidden' : ''}`}>
     <div className="dog-card-top"><span className="dog-avatar" style={{ background: `${dogColor(dog.id)}18`, color: dogColor(dog.id) }}>🐕</span>
       <button className="dog-title" onClick={onDetails}><strong>{name}</strong><span>經 Master {dog.masterId} · 雲端</span></button>
       <button className="icon-button" aria-label={`${hidden ? '顯示' : '隱藏'}${name}位置`} aria-pressed={!hidden} onClick={onToggle}>{hidden ? '◌' : '◎'}</button>
     </div>
-    <div className="dog-status"><i className={dog.stale ? 'offline-dot' : 'online-dot'} />{positionLabel(dog) || dog.status}{dog.retained && <span>最後有效位置</span>}</div>
+    <div className="dog-status"><i className={positionState === 'expired' ? 'offline-dot' : positionState === 'retained' ? 'retained-dot' : 'online-dot'} />{positionLabel(dog, now) || dog.status}{dog.retained && <span>最後有效位置</span>}</div>
     <Metrics dog={dog} />
     <dl className="dog-times"><div><dt>最後封包</dt><dd>{formatTime(dog.lastPacketAt)}</dd></div><div><dt>有效定位</dt><dd>{formatTime(dog.lastPositionAt)}</dd></div></dl>
-    {dog.lastDisplayed && <p className="warning">× 未更新／最後顯示位置；固定位置套用已關閉。</p>}
-    {dog.stale && <p className="warning">{dog.position ? dog.retained ? '× GPS 未更新，顯示最後有效位置。' : '× 位置未更新，顯示最後位置。' : '尚無可顯示位置。'}</p>}
+    {positionState === 'retained' && <p className="warning">最新 GPS 無效，顯示最後有效位置。</p>}
+    {positionState === 'expired' && <p className="warning">× 定位超過 35 分鐘未更新，顯示最後位置。</p>}
     <div className="dog-actions"><button disabled={!dog.position || hidden} className={following ? 'active-follow' : ''} onClick={onFollow}>{following ? '取消跟隨' : '地圖跟隨'}</button><button onClick={onDetails}>詳細資訊 ↗</button></div>
   </article>;
 }

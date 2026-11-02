@@ -1,4 +1,27 @@
 // GPS and dog names are resolved separately. Keep status fields from one report.
+export function labelMode(dog) {
+  if (!dog.modeStatus?.ready) {
+    const previous = dog.modeStatus?.command;
+    if (previous?.status !== 'confirmed') return '未知';
+    const lastMode = labelMode({ ...dog, healthDisplay: null, modeStatus: { ready: true, command: previous } });
+    return lastMode === '未知' ? lastMode : `${lastMode}（上次確認）`;
+  }
+  const command = dog.modeStatus.command;
+  const health = dog.healthDisplay;
+  const healthAt = Date.parse(health?.received_at);
+  const healthMatches = health?.master_id === dog.masterId && health?.slave_id === dog.id;
+  const commandAt = Math.max(Date.parse(command?.created_at) || 0, Date.parse(command?.completed_at) || 0);
+  if (healthMatches && Number.isFinite(healthAt) && healthAt > commandAt && [0, 1].includes(health.mode)) {
+    return health.mode === 1 ? '追蹤中' : '省電待機';
+  }
+  if (command?.master_id === dog.masterId && command?.slave_id === dog.id
+      && command.status === 'confirmed' && Number.isFinite(Date.parse(command.completed_at))
+      && [0, 1].includes(command.reported_mode)) {
+    return command.reported_mode === 1 ? '追蹤中' : '省電待機';
+  }
+  return '未知';
+}
+
 export function labelStatus(dog) {
   const health = dog.healthDisplay;
   const telemetryAt = dog.packet?.received_at;
