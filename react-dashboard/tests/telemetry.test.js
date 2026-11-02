@@ -131,7 +131,47 @@ test('route breaks at missing fixes, long gaps and changes of Master', () => {
     parseTelemetry(raw(now - 280000, { lat: 0, lon: 0 })), parseTelemetry(raw(now - 270000)),
     parseTelemetry(raw(now - 260000, {}, 2, 7)), parseTelemetry(raw(now))];
   const route = buildRoutes(rows)[0];
-  assert.deepEqual(route.segments.map(segment => segment.length), [2, 1, 1, 1]);
+  assert.deepEqual(route.segments.map(segment => segment.length), [2]);
+  assert.equal(route.points.length, 5);
+});
+
+test('scheduled fixes retain raw coordinates and connect only within 20–35 minutes', () => {
+  const samples = [0, 30, 60, 120].map((minutes, index) =>
+    parseTelemetry(raw(now + minutes * 60000, { lat: 25033000 + index * 1000 })));
+  const route = buildRoutes(samples)[0];
+  assert.equal(route.points.length, 4);
+  assert.deepEqual(route.sections.map(part => [part.kind, part.points.length]), [['scheduled', 3]]);
+  assert.deepEqual(route.sections[0].points, samples.slice(0, 3).map(row => [row.slave_lat, row.slave_lon]));
+  assert.equal(route.trackingMeters, 0);
+  assert.ok(route.scheduledMeters > 200 && route.scheduledMeters < 230);
+});
+
+test('cadence transitions split styles, keep endpoints and exclude unconnected distances', () => {
+  const samples = [0, 30, 30.5, 31, 61].map((minutes, index) =>
+    parseTelemetry(raw(now + minutes * 60000, { lat: 25033000 + index * 1000 })));
+  const route = buildRoutes([...samples, samples[2]])[0];
+  assert.deepEqual(route.sections.map(part => part.kind), ['scheduled', 'tracking', 'scheduled']);
+  assert.equal(route.points.length, 5);
+  assert.deepEqual(route.sections[1].points.at(-1), [samples[3].slave_lat, samples[3].slave_lon]);
+  assert.ok(route.trackingMeters > 200);
+  const gap = buildRoutes([samples[0], samples[3]])[0];
+  assert.equal(gap.sections.length, 1); // 31 minutes is a sparse connection, never a dense track.
+  assert.equal(gap.trackingMeters, 0);
+});
+
+test('scheduled routes never bridge missing fixes, Master changes or ambiguous intervals', () => {
+  const samples = [
+    parseTelemetry(raw(now)),
+    parseTelemetry(raw(now + 30 * 60000, { lat: 0, lon: 0 })),
+    parseTelemetry(raw(now + 60 * 60000)),
+    parseTelemetry(raw(now + 90 * 60000, {}, 2, 7)),
+    parseTelemetry(raw(now + 100 * 60000, {}, 2, 7)),
+  ];
+  const route = buildRoutes(samples)[0];
+  assert.equal(route.sections.length, 0);
+  assert.equal(route.points.length, 4);
+  assert.equal(route.trackingMeters + route.scheduledMeters, 0);
+  assert.equal(buildRoutes(samples, now + 95 * 60000)[0].points.length, 1);
 });
 
 test('activity gaps stay null and invalid measurements are excluded', () => {

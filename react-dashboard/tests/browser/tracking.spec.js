@@ -3,6 +3,33 @@ import { mockGoogleMaps } from './googleMapsMock';
 
 test.beforeEach(async ({ page }) => { await mockGoogleMaps(page); });
 
+test('sparse routes show fixes and dashed connections alongside dense solid tracks', async ({ page }) => {
+  await mockCloud(page);
+  const now = Date.now();
+  const rows = [61, 31, 1, 0.5].map((minutes, index) => ({
+    event_id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+    master_id: 5, slave_id: 2, seq: index, received_at: new Date(now - minutes * 60000).toISOString(),
+    payload: { lat: 25033000 + index * 100, lon: 121565000 },
+  }));
+  await page.route('**/rest/v1/dog_telemetry*', route => route.fulfill({ json: new URL(route.request().url()).searchParams.has('or') ? [] : rows }));
+  await login(page, 1);
+  await page.locator('#route-window').selectOption('360');
+  await expect(page.locator('.route-points circle')).toHaveCount(4);
+  await expect(page.locator('.route-legend')).toContainText('定位點間直線距離');
+  await expect(page.locator('.route-legend')).toContainText('連續軌跡估算');
+  expect(await page.evaluate(() => window.__routeLines.filter(line => line.map).map(line => ({
+    dashed: line.options.strokeOpacity === 0 && line.options.icons.length > 0,
+    count: line.options.path.length,
+  })))).toEqual([{ dashed: true, count: 3 }, { dashed: false, count: 2 }]);
+  await page.getByLabel('移動路徑', { exact: true }).uncheck();
+  await expect(page.locator('.route-points circle')).toHaveCount(0);
+  await expect(page.locator('.route-legend')).toHaveCount(0);
+  await page.getByLabel('移動路徑', { exact: true }).check();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator('.route-legend')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
 const owner = '00000000-0000-4000-8000-000000000010';
 async function mockCloud(page, clustered = false, remote = false) {
   const now = Date.now();

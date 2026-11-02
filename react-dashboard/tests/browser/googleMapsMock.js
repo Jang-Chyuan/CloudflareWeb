@@ -59,7 +59,11 @@ export async function mockGoogleMaps(page) {
             map.center.lng + (p.x - map.div.clientWidth / 2) / scale) };
       }
     }
-    class Polyline { constructor(options) { this.options = options; } setMap(map) { this.map = map; } }
+    window.__routeLines = [];
+    class Polyline {
+      constructor(options) { this.options = options; this.map = options.map; window.__routeLines.push(this); }
+      setMap(map) { this.map = map; }
+    }
     window.google = { maps: { Map, OverlayView, LatLng, LatLngBounds, Point, Polyline, event } };
   });
 }

@@ -73,7 +73,6 @@ export function positionLabel(dog, now = Date.now()) {
   return '';
 }
 
-// Never bridge missing fixes, a >2 minute gap, or a change of Master.
 export function retainDogPositions(dogs, previous, now) {
   const old = new Map(previous.filter(dog => dog.positionSource !== 'fixed').map(dog => [dog.id, dog]));
   const current = dogs.map(dog => {
@@ -103,27 +102,56 @@ export function buildRoutes(rows, startAt = -Infinity, endAt = Infinity) {
   }
   return [...groups].map(([id, samples]) => {
     samples.sort((a, b) => a.track_at - b.track_at || a.id.localeCompare(b.id));
-    const segments = [];
-    let segment = [], previous = null, window = [];
-    const finish = () => { if (segment.length) segments.push(segment); segment = []; window = []; };
+    const sections = [], points = [], seen = new Set();
+    let section = null, previous = null;
+    const finish = () => { section = null; };
     for (const row of samples) {
+      const key = `${row.id}:${row.track_at}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
       const point = coordinate(row.slave_lat, row.slave_lon);
       if (!point) { finish(); previous = null; continue; }
-      if (previous && (row.track_at - previous.track_at > 120000 || row.master_id !== previous.master_id
-        || Math.abs(row.slave_lon - previous.slave_lon) > 180)) finish();
-      window.push(point);
-      if (window.length > 3) window.shift();
-      const fast = row.speed_kmh > 10 && window.length > 1;
-      const smoothed = window.reduce((sum, value, index) => {
-        const weight = fast ? index === window.length - 1 ? 0.9 : 0.1 / (window.length - 1) : 1 / window.length;
-        return [sum[0] + value[0] * weight, sum[1] + value[1] * weight];
-      }, [0, 0]);
-      segment.push(smoothed);
+      points.push({ position: point, time: row.track_at });
+      const gap = previous ? row.track_at - previous.track_at : 0;
+      // Cadence describes sampling, not a confirmed device mode. A missing fix,
+      // skipped scheduled report or Master switch must never be bridged.
+      const kind = gap > 0 && gap <= 120000 ? 'tracking'
+        : gap >= 20 * 60000 && gap <= 35 * 60000 ? 'scheduled' : null;
+      if (!previous || !kind || row.master_id !== previous.master_id
+        || Math.abs(row.slave_lon - previous.slave_lon) > 180) finish();
+      else {
+        if (!section || section.kind !== kind) {
+          section = { kind, points: [coordinate(previous.slave_lat, previous.slave_lon)], distanceMeters: 0 };
+          sections.push(section);
+        }
+        section.points.push(point);
+        section.distanceMeters += gpsDistance(coordinate(previous.slave_lat, previous.slave_lon), point);
+      }
       previous = row;
     }
-    finish();
-    return { id, segments };
+    // Keep endpoints exact. Only soften tiny interior deviations in dense tracks;
+    // sharp turns and all sparse scheduled coordinates remain untouched.
+    for (const part of sections) if (part.kind === 'tracking') {
+      const original = part.points;
+      part.points = original.map((point, index) => {
+        if (!index || index === original.length - 1) return point;
+        const before = original[index - 1], after = original[index + 1];
+        const mid = [(before[0] + after[0]) / 2, (before[1] + after[1]) / 2];
+        if (gpsDistance(point, mid) > 5) return point;
+        return [point[0] * 0.8 + mid[0] * 0.2, point[1] * 0.8 + mid[1] * 0.2];
+      });
+    }
+    return { id, points, sections, segments: sections.map(part => part.points),
+      trackingMeters: sections.filter(part => part.kind === 'tracking').reduce((sum, part) => sum + part.distanceMeters, 0),
+      scheduledMeters: sections.filter(part => part.kind === 'scheduled').reduce((sum, part) => sum + part.distanceMeters, 0) };
   });
+}
+
+function gpsDistance(a, b) {
+  const rad = Math.PI / 180;
+  const value = Math.sin((b[0] - a[0]) * rad / 2) ** 2
+    + Math.cos(a[0] * rad) * Math.cos(b[0] * rad) * Math.sin((b[1] - a[1]) * rad / 2) ** 2;
+  return 6371000 * 2 * Math.asin(Math.sqrt(Math.min(1, value)));
 }
 
 export function activityHistory(rows, id, now) {
