@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { commandLabel, deviceMode, createDeviceCommand, fetchLatestCommand, pendingCommand } from '../tracking/commands';
 
-export default function DeviceCommands() {
+export default function DeviceCommands({ slaveId = 102 }) {
   const [command, setCommand] = useState(null), [busy, setBusy] = useState(false);
   const [error, setError] = useState(''), [online, setOnline] = useState(navigator.onLine);
   const [now, setNow] = useState(Date.now());
@@ -18,7 +18,7 @@ export default function DeviceCommands() {
       const version = generation.current;
       reading = true; controller = new AbortController();
       try {
-        const latest = await fetchLatestCommand(supabase, controller.signal);
+        const latest = await fetchLatestCommand(supabase, controller.signal, 201, slaveId);
         if (mounted.current && version === generation.current) {
           setCommand(latest); setReady(true);
           if (request.current && latest?.request_id === request.current.id) {
@@ -37,7 +37,7 @@ export default function DeviceCommands() {
     return () => { mounted.current = false; controller?.abort(); clearInterval(timer);
       window.removeEventListener('online', connectivity); window.removeEventListener('offline', connectivity);
       document.removeEventListener('visibilitychange', refresh); };
-  }, []);
+  }, [slaveId]);
   const waiting = pendingCommand(command) && (!Number.isFinite(Date.parse(command.expires_at)) || Date.parse(command.expires_at) > now);
   const failed = command && (['unconfirmed', 'expired', 'rejected'].includes(command.status)
     || (pendingCommand(command) && !waiting));
@@ -48,7 +48,7 @@ export default function DeviceCommands() {
     if (!request.current || request.current.action !== action) request.current = { action, id: crypto.randomUUID() };
     sending.current = true; generation.current++; setBusy(true); setError('');
     try {
-      const result = await createDeviceCommand(supabase, action, request.current.id);
+      const result = await createDeviceCommand(supabase, action, request.current.id, slaveId);
       request.current = null;
       if (mounted.current) { setCommand(result); setNow(Date.now()); setReady(true); setRetryAction(null); }
     } catch {
@@ -60,10 +60,10 @@ export default function DeviceCommands() {
     timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
   }).format(new Date(mode.confirmedAt)) : null;
-  return <section className="device-commands" aria-label="Slave 102 遠端控制">
+  return <section className="device-commands" aria-label={`Slave ${slaveId} 遠端控制`}>
     <div className="device-mode" role="status" aria-live="polite"><span>裝置模式：</span><strong className={mode.tracking ? 'device-mode-tracking' : ''}>{mode.label}</strong>
       {confirmedTime && <p>確認時間：{confirmedTime}（台灣時間）</p>}</div>
-    <p className="command-note">控制通道：Master 201 → Slave 102</p>
+    <p className="command-note">控制通道：Master 201 → Slave {slaveId}</p>
     <h3 className="command-heading">命令操作</h3>
     <div className="command-buttons"><button className="secondary" disabled={busy || !online || waiting || !ready || !!retryAction} onClick={() => send('tracking')}>要求開始追蹤</button>
       <button className="secondary" disabled={busy || !online || waiting || !ready || !!retryAction} onClick={() => send('sleep')}>要求省電待機</button></div>

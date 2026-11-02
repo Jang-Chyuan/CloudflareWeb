@@ -335,3 +335,21 @@ test('map distinguishes normal GPS, retained recent GPS and expired GPS', async 
   await page.setViewportSize({width:390,height:844});
   await expect(retained).toBeVisible();
 });
+
+test('Slave 108 detail controls send through Master 201 independently of telemetry source', async ({page}) => {
+ await mockCloud(page,false,'relay');
+ const at=new Date().toISOString();
+ const row={event_id:'00000000-0000-4000-8000-000000000108',master_id:5,slave_id:108,seq:108,received_at:at,
+   payload:{lat:25033000,lon:121565000,batteryPercentage:80,batteryValid:1},rssi:-80,snr:5};
+ await page.route('**/rest/v1/dog_telemetry*',route=>route.fulfill({json:new URL(route.request().url()).searchParams.has('or')?[]:[row]}));
+ const submissions=[];
+ await page.route('**/rest/v1/rpc/create_device_command',async route=>{
+  submissions.push(route.request().postDataJSON());
+  await route.fulfill({json:{id:crypto.randomUUID(),action:'tracking',slave_id:108,status:'queued',expires_at:'2099-01-01T00:00:00Z'}});
+ });
+ await login(page,1);await page.locator('.dog-map-icon').click();
+ const control=page.getByRole('region',{name:'Slave 108 遠端控制'});
+ await expect(control).toContainText('Master 201');
+ await control.getByRole('button',{name:'要求開始追蹤',exact:true}).click();
+ expect(submissions[0].p_slave_id).toBe(108);expect(submissions[0].p_master_id).toBe(201);
+});

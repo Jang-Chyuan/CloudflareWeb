@@ -29,3 +29,12 @@ test('mode requires confirmed result, reported mode and confirmation timestamp',
     { label: '省電待機', tracking: false, confirmedAt: completed_at });
   assert.equal(commandLabel({ status: 'claimed', expires_at: '2000-01-01' }), '未收到確認，裝置模式未知');
 });
+
+test('Slave 108 commands preserve target and reject unsupported slaves', async () => {
+ const calls=[];
+ const client={rpc:async(name,args)=>{calls.push(args);return {data:{id:'108',slave_id:args.p_slave_id}};}};
+ const row=await createDeviceCommand(client,'tracking','request-108',108);
+ assert.equal(row.slave_id,108);assert.equal(calls[0].p_master_id,201);
+ await assert.rejects(createDeviceCommand(client,'tracking','bad',104));
+ assert.equal(calls.length,1);
+});

@@ -18,10 +18,11 @@ export function deviceMode(command) {
   return { label: command.reported_mode === 1 ? '追蹤中' : '省電待機',
     tracking: command.reported_mode === 1, confirmedAt: timestamp };
 }
-export async function createDeviceCommand(client, action, requestId) {
+export async function createDeviceCommand(client, action, requestId, slaveId = 102) {
+  if (![102,108].includes(slaveId)) throw new Error('不支援的裝置');
   if (!['tracking', 'sleep'].includes(action)) throw new Error('不支援的命令');
   const { data, error } = await client.rpc('create_device_command', {
-    p_master_id: 201, p_slave_id: 102, p_action: action, p_request_id: requestId,
+    p_master_id: 201, p_slave_id: slaveId, p_action: action, p_request_id: requestId,
   });
   if (error) throw error;
   if (!data?.id) throw new Error('命令回應不完整');
