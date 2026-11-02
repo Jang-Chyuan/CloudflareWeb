@@ -1,3 +1,4 @@
+import { labelStatus } from './labelStatus';
 ﻿import { dogColor, dogName, formatTime } from './telemetry';
 import { placeDogLabel, labelLineEnd, spreadDogIcons } from './labels';
 
@@ -30,11 +31,7 @@ export function createDogOverlay(maps, map, dogs, aliases, onDetails) {
         const label = document.createElement('div');
         label.className = 'dog-map-label';
         label.style.borderColor = dogColor(dog.id);
-        const health = dog.healthDisplay;
-        const liveHealth = Object.hasOwn(dog, 'healthDisplay');
-        const packetAt = liveHealth ? (health?.received_at ? Date.parse(health.received_at) : null) : dog.lastPacketAt;
-        const battery = liveHealth ? (health?.battery_valid ? health.battery_pct : null) : dog.battery;
-        const rssi = liveHealth ? health?.rssi : dog.packet?.rssi;
+        const { packetAt, battery, rssi } = labelStatus(dog);
         for (const text of [
           `名字：${dogName(dog.id, aliases)}`,
           `最後封包：${formatTime(packetAt)}`,
