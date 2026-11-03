@@ -1,11 +1,32 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { labelStatus, labelMode } from '../src/tracking/labelStatus.js';
+import { modeMasterId } from '../src/tracking/commands.js';
 const at = Date.parse('2026-11-02T01:00:00Z');
 const dog = { id: 102, masterId: 201, lastPacketAt: at, lastPositionAt: at - 60000,
   battery: 79, packet: { received_at: at, rssi: -85 },
   healthDisplay: { master_id: 201, slave_id: 102, received_at: new Date(at - 1000).toISOString(),
     battery_valid: true, battery_pct: 80, rssi: -91 } };
+
+test('relayed GPS uses the authorized control Master for modes without replacing packet sources', () => {
+  for (const id of [102, 108]) {
+    const relayed = { ...dog, id, masterId: 7, healthDisplay: null };
+    assert.equal(modeMasterId(relayed, [7, 201]), 201);
+    assert.equal(modeMasterId(relayed, [7]), 7);
+    const command = { master_id: 201, slave_id: id, status: 'confirmed', reported_mode: 0,
+      completed_at: new Date(at + 500).toISOString() };
+    const input = { ...relayed, modeStatus: { masterId: 201, command, ready: true } };
+    assert.equal(labelMode(input), '省電待機');
+    assert.equal(labelMode({ ...input, modeStatus: { ...input.modeStatus, ready: false } }), '省電待機（上次確認）');
+    assert.equal(labelStatus(input).source, 'dog_telemetry');
+    assert.equal(input.masterId, 7);
+    assert.equal(labelMode({ ...input, modeStatus: { ...input.modeStatus, masterId: 7 } }), '未知');
+    for (const invalid of [{ slave_id: 109 }, { master_id: 9 }, { status: 'queued' }, { reported_mode: null }, { completed_at: null }]) {
+      assert.equal(labelMode({ ...input, modeStatus: { ...input.modeStatus, command: { ...command, ...invalid } } }), '未知');
+    }
+  }
+  assert.equal(modeMasterId({ id: 9, masterId: 7 }, [7, 201]), 7);
+});
 test('tracking and scheduled GPS status use newer telemetry', () => {
   assert.deepEqual(labelStatus(dog), {source: 'dog_telemetry', packetAt: at, battery: 79, rssi: -85});
   assert.equal(labelStatus({...dog, healthDisplay: null}).source, 'dog_telemetry');

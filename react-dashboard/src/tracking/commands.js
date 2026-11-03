@@ -1,4 +1,8 @@
 export const COMMAND_FIELDS = 'id,master_id,slave_id,action,status,created_at,expires_at,completed_at,reported_mode,error_code,request_id';
+// Control ownership is independent of the Master forwarding the latest GPS.
+export function modeMasterId(dog, authorizedMasters) {
+  return [102, 108].includes(dog.id) && authorizedMasters.includes(201) ? 201 : dog.masterId;
+}
 export const pendingCommand = command => command && ['queued', 'claimed'].includes(command.status);
 export function commandLabel(command, now = Date.now()) {
   if (!command) return '尚未送出命令';

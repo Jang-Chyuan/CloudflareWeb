@@ -6,6 +6,7 @@ import { readPositionCache, savePositionCache } from './tracking/positionCache';
 import { useDogNames } from './hooks/useDogNames';
 import { useDogHealth } from './hooks/useDogHealth';
 import { useDogModes } from './hooks/useDogModes';
+import { modeMasterId } from './tracking/commands';
 import Login from './components/Login';
 import TrackingMap from './components/TrackingMap';
 import DogCard from './components/DogCard';
@@ -40,11 +41,11 @@ function Dashboard({ session }) {
   }, [dogs, cloud.masters, cloud.lastSync, session.user.id]);
   const routes = useMemo(() => buildRoutes(cloud.rows, now - preferences.windowMinutes * 60000, now), [cloud.rows, preferences.windowMinutes, now]);
   const health = useDogHealth(session.user.id, dogs);
-  const modes = useDogModes(session.user.id, dogs);
+  const modes = useDogModes(session.user.id, dogs, cloud.masters);
   const mapDogs = useMemo(() => dogs.map(dog => ({ ...dog, healthDisplay: health.health[dog.id] ?? null,
-    modeStatus: modes[`${dog.masterId}:${dog.id}`] ?? null,
+    modeStatus: modes[`${modeMasterId(dog, cloud.masters)}:${dog.id}`] ?? null,
     lastPositionAt: dog.gpsLastPositionAt ?? (dog.positionSource === 'gps' ? dog.lastPositionAt : null),
-  })), [dogs, health.health, modes]);
+  })), [dogs, health.health, modes, cloud.masters]);
   const filtered = dogs.filter(dog => `${names.aliases[dog.id] ?? ''} ${dog.id} Master ${dog.masterId}`.toLowerCase().includes(search.toLowerCase()));
   const selectedDog = details?.history ? details.dog : dogs.find(dog => dog.id === details?.id);
   const closeDetails = useCallback(() => setDetails(null), []);

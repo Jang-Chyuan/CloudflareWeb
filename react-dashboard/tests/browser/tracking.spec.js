@@ -380,3 +380,35 @@ test('Slave 108 detail controls send through Master 201 independently of telemet
  await control.getByRole('button',{name:'要求開始追蹤',exact:true}).click();
  expect(submissions[0].p_slave_id).toBe(108);expect(submissions[0].p_master_id).toBe(201);
 });
+
+test('relayed Slave 108 shows the same confirmed mode on map and detail', async ({ page }) => {
+  await mockCloud(page, false, 'relay');
+  const at = new Date().toISOString();
+  const row = { event_id: '00000000-0000-4000-8000-000000000108', master_id: 7, slave_id: 108,
+    received_at: at, payload: { lat: 25033000, lon: 121565000, batteryPercentage: 70, batteryValid: 1 }, rssi: -12 };
+  await page.route('**/rest/v1/device_members*', route => route.fulfill({ json:
+    Number(new URL(route.request().url()).searchParams.get('offset')) > 0 ? [] : [{ gateway_id: 'master_201' }, { gateway_id: 'master_7' }] }));
+  await page.route('**/rest/v1/dog_telemetry*', route => route.fulfill({ json:
+    new URL(route.request().url()).searchParams.has('or') ? [] : [row] }));
+  let mode = 0;
+  const targets = [];
+  await page.route('**/rest/v1/device_commands*', route => {
+    const params = new URL(route.request().url()).searchParams;
+    targets.push([params.get('master_id'), params.get('slave_id')]);
+    return route.fulfill({ json: params.get('master_id') === 'eq.201' && params.get('slave_id') === 'eq.108' ? [{
+      id: 'confirmed-108', master_id: 201, slave_id: 108, action: mode ? 'tracking' : 'sleep',
+      status: 'confirmed', reported_mode: mode, created_at: at, completed_at: at,
+    }] : [] });
+  });
+  await login(page, 1);
+  await expect(page.locator('.dog-map-label')).toContainText('裝置模式：省電待機');
+  await expect(page.locator('.dog-map-label')).toContainText('RSSI：-12 dBm');
+  await page.locator('.dog-map-icon').click();
+  await expect(page.getByRole('dialog')).toContainText('來源：經 Master 7');
+  await expect(page.locator('.device-mode')).toContainText('省電待機');
+  mode = 1;
+  await expect(page.locator('.device-mode')).toContainText('追蹤中', { timeout: 10000 });
+  await page.getByRole('button', { name: '關閉詳細資訊' }).click();
+  await expect(page.locator('.dog-map-label')).toContainText('裝置模式：追蹤中', { timeout: 10000 });
+  expect(targets.every(([master, slave]) => master === 'eq.201' && slave === 'eq.108')).toBe(true);
+});
