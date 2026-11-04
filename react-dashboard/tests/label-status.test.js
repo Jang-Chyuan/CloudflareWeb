@@ -9,7 +9,7 @@ const dog = { id: 102, masterId: 201, lastPacketAt: at, lastPositionAt: at - 600
     battery_valid: true, battery_pct: 80, rssi: -91 } };
 
 test('relayed GPS uses the authorized control Master for modes without replacing packet sources', () => {
-  for (const id of [102, 108]) {
+  for (const id of [102, 104, 108]) {
     const relayed = { ...dog, id, masterId: 7, healthDisplay: null };
     assert.equal(modeMasterId(relayed, [7, 201]), 201);
     assert.equal(modeMasterId(relayed, [7]), 7);

@@ -35,6 +35,20 @@ test('Slave 108 commands preserve target and reject unsupported slaves', async (
  const client={rpc:async(name,args)=>{calls.push(args);return {data:{id:'108',slave_id:args.p_slave_id}};}};
  const row=await createDeviceCommand(client,'tracking','request-108',108);
  assert.equal(row.slave_id,108);assert.equal(calls[0].p_master_id,201);
- await assert.rejects(createDeviceCommand(client,'tracking','bad',104));
+ await assert.rejects(createDeviceCommand(client,'tracking','bad',106));
  assert.equal(calls.length,1);
+});
+
+
+test('Slave 104 tracking/sleep preserve target and authorized Master', async () => {
+ const calls=[];
+ const client={rpc:async(name,args)=>{calls.push(args);return {data:{id:'104',slave_id:args.p_slave_id}};}};
+ for(const action of ['tracking','sleep']) {
+  const row=await createDeviceCommand(client,action,'request-104-'+action,104);
+  assert.equal(row.slave_id,104);
+  assert.equal(calls.at(-1).p_master_id,201);
+  assert.equal(calls.at(-1).p_action,action);
+ }
+ await assert.rejects(createDeviceCommand(client,'tracking','bad',106));
+ assert.equal(calls.length,2);
 });

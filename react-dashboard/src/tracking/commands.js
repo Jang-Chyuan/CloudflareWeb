@@ -1,7 +1,7 @@
 export const COMMAND_FIELDS = 'id,master_id,slave_id,action,status,created_at,expires_at,completed_at,reported_mode,error_code,request_id';
 // Control ownership is independent of the Master forwarding the latest GPS.
 export function modeMasterId(dog, authorizedMasters) {
-  return [102, 108].includes(dog.id) && authorizedMasters.includes(201) ? 201 : dog.masterId;
+  return [102, 104, 108].includes(dog.id) && authorizedMasters.includes(201) ? 201 : dog.masterId;
 }
 export const pendingCommand = command => command && ['queued', 'claimed'].includes(command.status);
 export function commandLabel(command, now = Date.now()) {
@@ -23,7 +23,7 @@ export function deviceMode(command) {
     tracking: command.reported_mode === 1, confirmedAt: timestamp };
 }
 export async function createDeviceCommand(client, action, requestId, slaveId = 102) {
-  if (![102,108].includes(slaveId)) throw new Error('不支援的裝置');
+  if (![102,104,108].includes(slaveId)) throw new Error('不支援的裝置');
   if (!['tracking', 'sleep'].includes(action)) throw new Error('不支援的命令');
   const { data, error } = await client.rpc('create_device_command', {
     p_master_id: 201, p_slave_id: slaveId, p_action: action, p_request_id: requestId,
