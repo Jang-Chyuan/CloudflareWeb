@@ -84,6 +84,24 @@ export function mergeRows(old, incoming, now) {
     .sort((a, b) => a.track_at - b.track_at || a.id.localeCompare(b.id));
 }
 
+export function taipeiInputTime(time) {
+  return new Date(time + 8 * 3600000).toISOString().slice(0, 16);
+}
+
+export function timeRange(startValue, endValue, now = Date.now()) {
+  const parse = value => {
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) throw new Error('請選擇有效的日期與時間。');
+    const time = Date.parse(`${value}:00+08:00`);
+    if (!Number.isFinite(time) || taipeiInputTime(time) !== value) throw new Error('日期或時間不存在。');
+    return time;
+  };
+  const start = parse(startValue), end = parse(endValue);
+  const earliest = Math.floor((now - 15 * DAY) / 60000) * 60000;
+  if (start < earliest || end > now) throw new Error('請選擇最近 15 天內的時段。');
+  if (end <= start) throw new Error('結束時間必須晚於開始時間。');
+  return { start, end };
+}
+
 export function dateRange(startDate, endDate, now = Date.now()) {
   const parse = date => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('請選擇有效日期。');

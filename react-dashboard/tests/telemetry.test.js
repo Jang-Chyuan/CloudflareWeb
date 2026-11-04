@@ -7,7 +7,7 @@ async function load(file) {
   return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);
 }
 const { parseTelemetry, buildDogs, buildRoutes, activityHistory, coordinate, DAY, retainDogPositions, positionLabel } = await load('src/tracking/telemetry.js');
-const { dateRange, fetchTelemetry, mergeRows, fetchLastGpsFix, fetchDogHealth } = await load('src/tracking/cloud.js');
+const { dateRange, timeRange, taipeiInputTime, fetchTelemetry, mergeRows, fetchLastGpsFix, fetchDogHealth } = await load('src/tracking/cloud.js');
 const { readPositionCache, savePositionCache } = await load('src/tracking/positionCache.js');
 const now = Date.parse('2026-10-09T04:30:00Z');
 function raw(time, values = {}, slaveId = 2, masterId = 5, id = '00000000-0000-4000-8000-000000000001') {
@@ -179,6 +179,17 @@ test('activity gaps stay null and invalid measurements are excluded', () => {
     parseTelemetry(raw(now - 10000, { activityScore: 1100 }))], 2, now);
   assert.equal(values.length, 1440); assert.equal(values[0].value, null);
   assert.equal(values.at(-2).value, 0.65); assert.equal(values.at(-2).count, 1);
+});
+
+test('custom periods use Taiwan time and stay within the last 15 days', () => {
+  assert.deepEqual(timeRange('2026-09-24T12:30', '2026-10-09T12:30', now), { start: now - 15 * DAY, end: now });
+  assert.equal(taipeiInputTime(now), '2026-10-09T12:30');
+  assert.throws(() => timeRange('2026-09-24T12:29', '2026-10-09T12:30', now));
+  assert.throws(() => timeRange('2026-10-09T12:00', '2026-10-09T12:31', now));
+  assert.throws(() => timeRange('2026-10-09T12:30', '2026-10-09T12:30', now));
+  assert.throws(() => timeRange('2026-10-09T12:30', '2026-10-08T12:30', now));
+  assert.throws(() => timeRange('2026-09-31T12:00', '2026-10-09T12:30', now));
+  assert.throws(() => timeRange('', '2026-10-09T12:30', now));
 });
 
 test('Taiwan date ranges and bounded histories', () => {

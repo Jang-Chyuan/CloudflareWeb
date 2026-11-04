@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { fetchTelemetry, listMasters, mergeRows, fetchLastGpsFix } from '../tracking/cloud';
 import { DAY, buildDogs } from '../tracking/telemetry';
+import { readCachedTelemetry, saveCachedTelemetry, updateCachedMasters } from '../tracking/telemetryCache';
 
 export function useAuth() {
   const [session, setSession] = useState(null);
@@ -29,6 +30,7 @@ export function useCloudTracking(owner) {
   const [masters, setMasters] = useState([]);
   const [historicalFixes, setHistoricalFixes] = useState([]);
   const [gpsWarning, setGpsWarning] = useState('');
+  const [cacheWarning, setCacheWarning] = useState('');
   const gpsQueryTimes = useRef(new Map());
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -57,10 +59,10 @@ export function useCloudTracking(owner) {
   }, [owner, rows, masters]);
   useEffect(() => {
     if (!owner || !supabase) return;
-    let active = true, busy = false, cursor = null, reconciledAt = 0, knownMasters = '';
+    let active = true, busy = false, initialized = false, cursor = null, reconciledAt = 0, knownMasters = '';
     let controller;
     async function refresh(force = false) {
-      if (!active || busy || document.visibilityState === 'hidden' || !navigator.onLine) return;
+      if (!active || !initialized || busy || document.visibilityState === 'hidden' || !navigator.onLine) return;
       busy = true;
       controller = new AbortController();
       // Finite requests, including initial and historical downloads.
@@ -72,6 +74,9 @@ export function useCloudTracking(owner) {
         if (!active) return;
         setMasters(ids);
         setRows(old => old.filter(row => ids.includes(row.master_id)));
+        try { await updateCachedMasters(owner, ids, now); }
+        catch { if (active) setCacheWarning('無法更新本機儲存，雲端資料仍可正常讀取。'); }
+        if (!active || controller.signal.aborted) return;
         const full = force || !cursor || now - reconciledAt >= 600000 || ids.join(',') !== knownMasters;
         const start = full ? now - DAY : Math.max(now - DAY, cursor - 300000);
         const incoming = await fetchTelemetry({ client: supabase, masterIds: ids, start, end: now,
@@ -85,6 +90,10 @@ export function useCloudTracking(owner) {
         if (!active || controller.signal.aborted) return;
         setMasters(ids); setRows(old => mergeRows(full ? [] : old.filter(row => ids.includes(row.master_id)), incoming, now));
         setLastSync(now);
+        try {
+          await saveCachedTelemetry(owner, incoming, now);
+          if (active) setCacheWarning('');
+        } catch { if (active) setCacheWarning('本機儲存失敗或空間不足；目前資料僅保留在記憶體。'); }
         cursor = now; knownMasters = ids.join(',');
         if (full) reconciledAt = now;
       } catch (failure) {
@@ -95,7 +104,14 @@ export function useCloudTracking(owner) {
       }
     }
     refreshRef.current = () => refresh(true);
-    refresh();
+    readCachedTelemetry(owner, Date.now() - DAY, Date.now()).then(cached => {
+      if (!active) return;
+      setMasters(cached.masters);
+      setRows(mergeRows([], cached.rows, Date.now()));
+      if (cached.rows.length) setCacheWarning('已載入本機資料，等待雲端核對；離線資料可能不完整。');
+    }).catch(() => {
+      if (active) setCacheWarning('無法使用本機儲存；仍可從雲端讀取資料。');
+    }).finally(() => { initialized = true; if (active) refresh(); });
     const interval = setInterval(() => refresh(), 5000);
     const resume = () => { if (document.visibilityState === 'visible') refresh(); };
     document.addEventListener('visibilitychange', resume);
@@ -108,7 +124,7 @@ export function useCloudTracking(owner) {
   }, [owner]);
   const refresh = useCallback(() => refreshRef.current(), []);
   return { rows, masters, historicalFixes: historicalFixes.filter(row => masters.includes(row.master_id)),
-    loading, progress, lastSync, error, warning: gpsWarning, refresh };
+    loading, progress, lastSync, error, warning: [gpsWarning, cacheWarning].filter(Boolean).join(' '), refresh };
 }
 
 export function usePreferences(owner) {

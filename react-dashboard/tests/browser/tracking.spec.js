@@ -84,6 +84,76 @@ async function login(page, dogCount = 2, showAll = true) {
   if (showAll) await page.getByRole('button', { name: '顯示全部', exact: true }).click();
 }
 
+test('downloaded packets restore after reload and support offline history', async ({ page }) => {
+  await mockCloud(page);
+  await login(page);
+  await expect.poll(() => page.evaluate(async owner => {
+    const { readCachedTelemetry } = await import('/src/tracking/telemetryCache.js');
+    return (await readCachedTelemetry(owner, 0, Date.now())).rows.length;
+  }, owner)).toBe(3);
+  await page.addInitScript(() => Object.defineProperty(navigator, 'onLine', { get: () => false, configurable: true }));
+  await page.reload();
+  await expect(page.locator('.dog-card')).toHaveCount(2);
+  await expect(page.getByText('已載入本機資料', { exact: false })).toBeVisible();
+  await page.getByRole('button', { name: '歷史軌跡', exact: false }).click();
+  await page.getByRole('button', { name: '查詢軌跡', exact: true }).click();
+  await expect(page.getByText('離線：僅顯示已下載的本機資料', { exact: false })).toBeVisible();
+  await expect(page.getByRole('button', { name: '匯出 CSV', exact: false })).toBeEnabled();
+});
+
+test('custom 15-day period queries older cloud routes, caches them and works offline on mobile', async ({ page }) => {
+  await mockCloud(page);
+  await login(page);
+  const start = Math.floor((Date.now() - 10 * 86400000) / 60000) * 60000;
+  const end = start + 3600000;
+  const values = [start - 1000, start + 1000, start + 61000, end + 1000].map((time, i) => ({
+    event_id: `00000000-0000-4000-8000-${String(201 + i).padStart(12, '0')}`,
+    master_id: 5, slave_id: 2, received_at: new Date(time).toISOString(),
+    payload: { lat: 25033000 + i * 100, lon: 121565000 },
+  }));
+  let requestedRange;
+  await page.route('**/rest/v1/dog_telemetry*', route => {
+    const url = new URL(route.request().url());
+    const bounds = url.searchParams.getAll('received_at');
+    const lower = Date.parse(bounds.find(value => value.startsWith('gte.'))?.slice(4));
+    const upper = Date.parse(bounds.find(value => value.startsWith('lt.'))?.slice(3));
+    requestedRange = { lower, upper };
+    return route.fulfill({ json: url.searchParams.has('or') ? [] : values.filter(row => {
+      const time = Date.parse(row.received_at); return time >= lower && time < upper;
+    }) });
+  });
+  const inputTime = time => new Date(time + 8 * 3600000).toISOString().slice(0, 16);
+  async function selectPeriod() {
+    await page.locator('#route-window').selectOption('custom');
+    await expect(page.getByLabel('查詢方式')).toHaveValue('time');
+    await page.getByLabel('開始時間（台灣）').fill(inputTime(start));
+    await page.getByLabel('結束時間（台灣）').fill(inputTime(end));
+    await page.getByRole('button', { name: '查詢軌跡', exact: true }).click();
+    await expect(page.locator('.route-points circle')).toHaveCount(2);
+  }
+  await selectPeriod();
+  expect(requestedRange).toEqual({ lower: start, upper: end });
+  await expect.poll(() => page.evaluate(async ({ owner, start, end }) => {
+    const cache = await import('/src/tracking/telemetryCache.js');
+    return (await cache.readCachedTelemetry(owner, start, end)).rows.length;
+  }, { owner, start, end })).toBe(2);
+  await page.getByRole('button', { name: '播放', exact: true }).click();
+  await expect(page.getByRole('button', { name: '暫停', exact: true })).toBeVisible();
+  await page.addInitScript(() => Object.defineProperty(navigator, 'onLine', { get: () => false, configurable: true }));
+  await page.reload();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await selectPeriod();
+  await expect(page.getByText('離線：僅顯示已下載的本機資料', { exact: false })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test('cloud tracking still works when IndexedDB is unavailable', async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(window, 'indexedDB', { value: undefined }));
+  await mockCloud(page);
+  await login(page);
+  await expect(page.getByText('本機儲存失敗或空間不足', { exact: false })).toBeVisible();
+});
+
 test('clustered labels do not overlap and connectors appear above markers', async ({ page }) => {
   const failures = [];
   page.on('pageerror', error => failures.push(error.message));

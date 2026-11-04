@@ -28,6 +28,7 @@ function Dashboard({ session }) {
   const [tab, setTab] = useState('live'), [focus, setFocus] = useState(null), [details, setDetails] = useState(null);
   const [now, setNow] = useState(Date.now()), [signingOut, setSigningOut] = useState(false), [authError, setAuthError] = useState('');
   const [search, setSearch] = useState('');
+  const [historyMode, setHistoryMode] = useState('date');
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 10000); return () => clearInterval(timer); }, []);
   const lastDogs = useRef(null);
   if (lastDogs.current === null) lastDogs.current = readPositionCache(localStorage, session.user.id);
@@ -75,8 +76,12 @@ function Dashboard({ session }) {
         <div className="tracking-layout"><section className="tracking-map-area">
           <div className="map-toolbar"><div className="map-title"><span className="online-dot" /> Slave 地圖</div><div className="map-options">
             <label className="check-label"><input type="checkbox" checked={preferences.trails} onChange={e => save({ trails: e.target.checked })} />移動路徑</label>
-            <label className="sr-only" htmlFor="route-window">路徑時間範圍</label><select id="route-window" value={preferences.windowMinutes} onChange={e => save({ windowMinutes: Number(e.target.value) })}>
-              {[3, 10, 30, 60, 360, 1440].map(minutes => <option key={minutes} value={minutes}>過去 {minutes < 60 ? `${minutes} 分鐘` : `${minutes / 60} 小時`}</option>)}</select>
+            <label className="sr-only" htmlFor="route-window">路徑時間範圍</label><select id="route-window" value={preferences.windowMinutes} onChange={e => {
+              if (e.target.value === 'custom') { setHistoryMode('time'); setTab('history'); }
+              else save({ windowMinutes: Number(e.target.value) });
+            }}>
+              {[3, 10, 30, 60, 360, 1440].map(minutes => <option key={minutes} value={minutes}>過去 {minutes < 60 ? `${minutes} 分鐘` : `${minutes / 60} 小時`}</option>)}
+              <option value="custom">選擇 15 天內時段…</option></select>
             <button className="text-button" onClick={() => { setFocus(null); save({ hidden: [] }); }}>顯示全部</button>
           </div></div>
           <TrackingMap dogs={mapDogs} routes={routes} hidden={preferences.hidden} focus={focus} aliases={names.aliases} showTrails={preferences.trails} onDetails={id => setDetails({ id })} viewKey="live" syncing={cloud.loading} />
@@ -89,7 +94,7 @@ function Dashboard({ session }) {
           <div className="dog-list-scroll">{filtered.map(dog => <DogCard key={dog.id} dog={dog} now={now} aliases={names.aliases} hidden={preferences.hidden.includes(dog.id)} following={focus === dog.id}
             onFollow={() => setFocus(focus === dog.id ? null : dog.id)} onToggle={() => toggleDog(dog.id)} onDetails={() => setDetails({ id: dog.id })} />)}</div>
         </aside></div>
-      </> : <History masters={cloud.masters} aliases={names.aliases} hidden={preferences.hidden} onDetails={setDetails} />}
+      </> : <History owner={session.user.id} initialMode={historyMode} masters={cloud.masters} aliases={names.aliases} hidden={preferences.hidden} onDetails={setDetails} />}
       <footer className="app-footer"><span>DogWebTracker · Slave 追蹤</span><span>時間均為台灣時間（UTC+8）</span></footer>
     </main>
     {selectedDog && <DogDetails key={`${selectedDog.id}:${details?.history ? 'history' : 'live'}`} dog={selectedDog} rows={details?.history ? details.rows : cloud.rows} now={details?.history ? details.now : now} history={!!details?.history}

@@ -1,15 +1,22 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { dateRange, fetchTelemetry } from '../tracking/cloud';
+import { dateRange, timeRange, taipeiInputTime, fetchTelemetry } from '../tracking/cloud';
 import { buildRoutes, coordinate, dogName, formatTime } from '../tracking/telemetry';
 import TrackingMap from './TrackingMap';
+import { readCachedTelemetry, saveCachedTelemetry, updateCachedMasters } from '../tracking/telemetryCache';
+import { listMasters } from '../tracking/cloud';
 
-export default function History({ masters, aliases, hidden, onDetails }) {
+export default function History({ owner, initialMode = 'date', masters, aliases, hidden, onDetails }) {
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).format(Date.now());
   const [startDate, setStartDate] = useState(today), [endDate, setEndDate] = useState(today);
+  const [rangeMode, setRangeMode] = useState(initialMode);
+  const [startTime, setStartTime] = useState(() => taipeiInputTime(Date.now() - 86400000));
+  const [endTime, setEndTime] = useState(() => taipeiInputTime(Date.now()));
+  const minTime = taipeiInputTime(Date.now() - 15 * 86400000), maxTime = taipeiInputTime(Date.now());
   const [master, setMaster] = useState(''), [slave, setSlave] = useState('');
   const [rows, setRows] = useState([]), [loading, setLoading] = useState(false), [progress, setProgress] = useState(0);
   const [error, setError] = useState(''), [loaded, setLoaded] = useState(false), [page, setPage] = useState(0);
+  const [cacheNotice, setCacheNotice] = useState('');
   const [playhead, setPlayhead] = useState(null), [playing, setPlaying] = useState(false);
   const [rawId, setRawId] = useState(null);
   const request = useRef(null), active = useRef(true);
@@ -45,16 +52,32 @@ export default function History({ masters, aliases, hidden, onDetails }) {
   }, [masters.join(',')]);
   async function load(event) {
     event.preventDefault(); if (loading) return;
-    setError(''); setPlaying(false);
+    setError(''); setCacheNotice(''); setRows([]); setPlaying(false);
     let range;
-    try { range = dateRange(startDate, endDate); } catch (failure) { setError(failure.message); return; }
+    try { range = rangeMode === 'time' ? timeRange(startTime, endTime) : dateRange(startDate, endDate); } catch (failure) { setError(failure.message); return; }
     const controller = new AbortController(); request.current = controller;
     const timeout = setTimeout(() => controller.abort(), 120000);
     setLoading(true); setProgress(0);
     try {
-      const result = await fetchTelemetry({ client: supabase, masterIds: master ? [Number(master)].filter(id => masters.includes(id)) : masters,
+      if (!navigator.onLine) {
+        const cached = await readCachedTelemetry(owner, range.start, range.end);
+        if (active.current && !controller.signal.aborted) {
+          setRows(cached.rows.filter(row => masters.includes(row.master_id) && (!master || row.master_id === Number(master))));
+          setLoaded(true); setSlave('');
+          setCacheNotice('離線：僅顯示已下載的本機資料，可能不完整；本機保留最近 15 天。');
+        }
+        return;
+      }
+      const allowed = await listMasters(supabase, owner, controller.signal);
+      try { await updateCachedMasters(owner, allowed); }
+      catch { if (active.current) setCacheNotice('本機儲存無法使用，仍可查詢雲端。'); }
+      const result = await fetchTelemetry({ client: supabase, masterIds: master ? [Number(master)].filter(id => allowed.includes(id)) : allowed,
         ...range, signal: controller.signal, onProgress: count => { if (active.current) setProgress(count); } });
       if (active.current && !controller.signal.aborted) { setRows(result); setLoaded(true); setSlave(''); }
+      if (active.current && !controller.signal.aborted) {
+        try { await saveCachedTelemetry(owner, result); }
+        catch { if (active.current) setCacheNotice('本機儲存失敗或空間不足；查詢結果仍可查看及匯出。'); }
+      }
     } catch (failure) { if (active.current) setError(controller.signal.aborted ? '查詢已取消或逾時，請縮小範圍後重試。' : failure.message); }
     finally { clearTimeout(timeout); if (active.current) setLoading(false); }
   }
@@ -62,7 +85,8 @@ export default function History({ masters, aliases, hidden, onDetails }) {
     const fields = ['slave_id', 'master_id', 'time_taipei', 'latitude', 'longitude', 'speed_kmh', 'battery_percentage', 'activity'];
     const text = [fields.join(','), ...filtered.map(row => [row.slave_id, row.master_id, formatTime(row.track_at), row.slave_lat, row.slave_lon, row.speed_kmh, row.battery_valid ? row.battery_percentage : '', row.activity_valid ? row.activity : ''].join(','))].join('\r\n');
     const url = URL.createObjectURL(new Blob(['\uFEFF', text], { type: 'text/csv;charset=utf-8' }));
-    const link = document.createElement('a'); link.href = url; link.download = `DogWebTracker-${startDate}-${endDate}.csv`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const period = rangeMode === 'time' ? `${startTime}-${endTime}`.replaceAll(':', '') : `${startDate}-${endDate}`;
+    const link = document.createElement('a'); link.href = url; link.download = `DogWebTracker-${period}.csv`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   function inspect(id) {
     const samples = filtered.filter(row => row.slave_id === id && row.track_at <= visibleTime);
@@ -80,12 +104,18 @@ export default function History({ masters, aliases, hidden, onDetails }) {
   }
   const ordered = [...filtered].reverse();
   const pages = Math.max(1, Math.ceil(ordered.length / 50));
-  return <section className="history-page"><div className="section-heading"><div><span className="eyebrow">HISTORY</span><h1>歷史軌跡</h1><p>以台灣時間查詢，每次最多 7 天。</p></div><button className="secondary" disabled={!filtered.length || loading} onClick={download}>匯出 CSV ↓</button></div>
-    <form className="history-filters" onSubmit={load}><label>開始日期<input type="date" value={startDate} max={today} onChange={e => setStartDate(e.target.value)} required disabled={loading} /></label>
-      <label>結束日期<input type="date" value={endDate} min={startDate} max={today} onChange={e => setEndDate(e.target.value)} required disabled={loading} /></label>
+  return <section className="history-page"><div className="section-heading"><div><span className="eyebrow">HISTORY</span><h1>歷史軌跡</h1><p>以台灣時間查詢；可選最近 15 天內時段，或按日期查詢最多 7 天。</p></div><button className="secondary" disabled={!filtered.length || loading} onClick={download}>匯出 CSV ↓</button></div>
+    <form className="history-filters" onSubmit={load}>
+      <label>查詢方式<select value={rangeMode} onChange={e => setRangeMode(e.target.value)} disabled={loading}><option value="date">按日期</option><option value="time">15 天內自訂時段</option></select></label>
+      {rangeMode === 'time' ? <>
+        <label>開始時間（台灣）<input type="datetime-local" value={startTime} min={minTime} max={maxTime} onChange={e => setStartTime(e.target.value)} required disabled={loading} /></label>
+        <label>結束時間（台灣）<input type="datetime-local" value={endTime} min={startTime || minTime} max={maxTime} onChange={e => setEndTime(e.target.value)} required disabled={loading} /></label>
+      </> : <><label>開始日期<input type="date" value={startDate} max={today} onChange={e => setStartDate(e.target.value)} required disabled={loading} /></label>
+      <label>結束日期<input type="date" value={endDate} min={startDate} max={today} onChange={e => setEndDate(e.target.value)} required disabled={loading} /></label></>}
       <label>Master<select value={master} onChange={e => setMaster(e.target.value)} disabled={loading}><option value="">全部 Master</option>{masters.map(id => <option key={id} value={id}>Master {id}</option>)}</select></label>
       <button className="primary" disabled={loading || !masters.length}>{loading ? `讀取 ${progress.toLocaleString()} 筆…` : '查詢軌跡'}</button>{loading && <button type="button" className="secondary" onClick={() => request.current?.abort()}>取消</button>}
     </form>{error && <p role="alert" className="error banner">{error}</p>}
+    {cacheNotice && <p role="status" className="warning banner">{cacheNotice}</p>}
     {!loaded ? <div className="empty-state"><span>↝</span><h2>選擇日期，查看走過的路線</h2><p>{masters.length ? '資料只包含此帳號授權的 Master 與 Slave。' : '目前沒有 Master 授權，請聯絡管理員。'}</p></div>
       : !rows.length ? <div className="empty-state"><h2>這段期間沒有資料</h2><p>請選擇其他日期或 Master。</p></div> : <>
         <div className="history-tools"><label>犬隻<select value={slave} onChange={e => setSlave(e.target.value)}><option value="">全部犬隻</option>{availableIds.map(id => <option key={id} value={id}>{dogName(id, aliases)}</option>)}</select></label><span>{filtered.length.toLocaleString()} 筆資料 · {availableIds.length} 隻狗</span></div>
