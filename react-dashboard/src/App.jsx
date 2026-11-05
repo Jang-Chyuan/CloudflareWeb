@@ -12,6 +12,7 @@ import TrackingMap from './components/TrackingMap';
 import DogCard from './components/DogCard';
 import DogDetails from './components/DogDetails';
 import History from './components/History';
+import MasterWifi from './components/MasterWifi';
 
 class ErrorBoundary extends React.Component {
   state = { error: false };
@@ -21,7 +22,7 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-function Dashboard({ session }) {
+function Dashboard({ session, onWifiOpen }) {
   const cloud = useCloudTracking(session.user.id);
   const names = useDogNames(session.user.id);
   const [preferences, save] = usePreferences(session.user.id);
@@ -64,7 +65,7 @@ function Dashboard({ session }) {
   }
   return <div className="app-shell">
     <header className="app-header"><a className="brand" href="#" onClick={e => { e.preventDefault(); setTab('live'); }}><span className="brand-paw">🐾</span> DogWebTracker <span className="web-badge">WEB</span></a>
-      <nav aria-label="主要導覽"><button className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>↝ 歷史軌跡</button></nav>
+      <nav aria-label="主要導覽"><button onClick={onWifiOpen}>Master Wi-Fi 設定</button><button className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>↝ 歷史軌跡</button></nav>
       <div className="account"><span title={session.user.email}>{session.user.email}</span><button className="secondary" disabled={signingOut} onClick={logout}>{signingOut ? '登出中…' : '登出'}</button></div>
     </header>
     {(cloud.error || authError) && <div className="error banner" role="alert">{cloud.error || authError}<button className="text-button" disabled={cloud.loading} onClick={cloud.refresh}>重新讀取</button></div>}
@@ -105,6 +106,8 @@ function Dashboard({ session }) {
 
 export default function App() {
   const auth = useAuth();
+  const [wifiOpen, setWifiOpen] = useState(false);
   return <ErrorBoundary>{!auth.ready ? <div className="empty-state"><h1>DogWebTracker</h1><p>正在恢復登入…</p></div>
-    : auth.session ? <Dashboard key={auth.session.user.id} session={auth.session} /> : <Login authError={auth.error} />}</ErrorBoundary>;
+    : auth.session ? <Dashboard key={auth.session.user.id} session={auth.session} onWifiOpen={() => setWifiOpen(true)} /> : <><Login authError={auth.error} /><div className="wifi-login-entry"><button className="secondary" onClick={() => setWifiOpen(true)}>Master Wi-Fi 設定</button></div></>}
+    {wifiOpen && <MasterWifi onClose={() => setWifiOpen(false)} />}</ErrorBoundary>;
 }

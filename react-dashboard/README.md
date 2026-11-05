@@ -13,7 +13,7 @@
 - 以台灣日期查詢最多 7 天的歷史、Master／犬隻篩選、時間回放、CSV 匯出及原始封包。
 - 響應式桌面與手機版面；犬隻別名與顯示偏好依帳號儲存在目前瀏覽器。
 
-不呼叫瀏覽器／手機 GPS、不顯示手機位置，也不掃描 BLE；資料來源僅為 Master 或手機轉送到雲端的 Slave 封包。`upload_source=phone` 是項圈封包的轉送來源，仍保留這些 Slave 資料。
+追蹤畫面不呼叫瀏覽器／手機 GPS、不顯示手機位置，也不自動掃描 BLE；資料來源為 Master 或手機轉送到雲端的 Slave 封包。Master Wi-Fi 設定由使用者另行按鈕啟動 Web Bluetooth，與追蹤資料來源分開。`upload_source=phone` 是項圈封包的轉送來源，仍保留這些 Slave 資料。
 
 ## Supabase
 
@@ -145,3 +145,34 @@ npm.cmd run build
 Map label status: the newer report for the same Master/Slave supplies packet time, battery and RSSI (dog_telemetry vs dog_health, compared by received_at). GPS always uses the last valid dog_telemetry fix; names still use slave_names. Invalid fields in the selected report remain unavailable rather than borrowing older values.
 
 地圖定位提示：最新 GPS 有效時顯示正常圖示；GPS 無效但最後有效位置在 35 分鐘內，顯示黃色驚嘆號與「顯示最後有效位置」；最後有效位置超過 35 分鐘才顯示 ×。健康回報不會刷新 GPS 有效時間。
+
+
+## Master Wi-Fi 設定（Web Bluetooth）
+
+分支：`feature/master-wifi-web-bluetooth`。登入畫面與上方導覽列皆有「Master Wi-Fi 設定」，Master 尚未連網時也能在附近配網。
+
+1. 以支援 Web Bluetooth 的 Chrome／Edge 開啟 HTTPS 網站或 localhost，確認電腦／手機有藍牙。
+2. 按「選擇並連線 Master」，由瀏覽器裝置選擇器選取附近的 DogGPS Master。選擇器只列出廣播配網服務 UUID 的裝置。
+3. 連線後顯示 Master 目前連線 SSID 與已儲存清單（最多 10 筆，每頁 2 筆）。這不是附近 Wi-Fi 掃描結果。
+4. 點選 SSID 可帶入表單，輸入密碼後送出；若是開放網路需明確勾選「此網路不需要密碼」。更新現有 SSID 時也必須重新輸入密碼。
+5. 「Master 已受理」僅表示韌體將要求放入佇列，不保證儲存或連線成功；稍後按重新整理，查看目前連線與清單。
+6. 刪除需要再次確認；關閉視窗或中斷連線會釋放 BLE 連線，清除表單密碼。
+
+協定沿用 DogTracker Master 的 `BleTask.cpp`：service `7f510001-6d9e-4e2f-a671-8f3f2d49a001`、Wi-Fi characteristic `7f510003-6d9e-4e2f-a671-8f3f2d49a001`，write-with-response 後 read JSON。GATT 讀寫序列化並有 12 秒逾時；斷線後不自動重播密碼寫入。SSID／密碼分別限制 32／63 UTF-8 bytes，完整 JSON 不超過 160 bytes。Master3、Master5、Master201 本機原始碼已有相同 list/upsert/remove 協定；不具備該 characteristic 的舊韌體須先更新。
+
+Wi-Fi 帳密不送入 Supabase／HTTP API、不儲存在 localStorage／sessionStorage，也不回讀已儲存密碼。此功能沿用裝置既有 BLE 存取方式；網站登入及雲端 Master 授權不等同 BLE 層的身分驗證。iPhone／iPad 等不支援 Web Bluetooth 的環境顯示替代提示，不能用這個頁面直接配網。
+
+驗證：`node --test tests/master-wifi.test.js`、`npx playwright test --config playwright.wifi.config.js --grep "Master Wi-Fi"`（獨立 5186 埠）、`npm run build`。瀏覽器案例使用模擬 GATT，涵蓋清單分頁、寫入受理、刪除、斷線、手機排版、網路與儲存不含密碼。實機藍牙與 ESP32 實際重新連線尚待測試；未自動變更任何 Master 帳密。
+
+Web Bluetooth 使用條件參考：https://developer.chrome.com/docs/capabilities/bluetooth
+
+
+### 掃描 Master 附近的 Wi-Fi
+
+連線 Master 後可按「掃描附近 Wi-Fi」，由 Master 而非瀏覽器／電腦掃描周邊網路。結果包含 SSID、dBm 訊號與是否需要密碼；點選後帶入表單，開放網路會選取免密碼設定，最後仍須按「傳送 Wi-Fi 設定」。已儲存清單與掃描清單分開顯示。
+
+新增 BLE `scan`／`scan_results` 協定，掃描 ID 識別不可變的分頁快照，最多顯示訊號較強的 20 個 SSID。Master 尚未完成時持續輪詢，最多等待 45 秒；失敗、空清單、舊結果或斷線會明確提示。舊 Master 韌體回 invalid_action 時顯示需更新的訊息，手動配網仍可使用。
+
+須先燒錄 XiaoMaster_201 同名分支的掃描韌體；Master3／5／7／9 尚未移植此掃描擴充。ESP32 Master 掃到的範圍、頻段與手機／電腦可能不同。隱藏 SSID 仍須手動輸入。此功能不會將掃描到的 SSID 自動上傳 Supabase。
+
+模擬測試已涵蓋 pending、分頁、排序、空清單、失敗／過期結果、逾時、斷線、舊韌體相容及選取開放／加密網路。2026-11-05 已燒錄 Master201 並透過原生 BLE 完成兩輪實體掃描（6／8 個 SSID，約 8.8／8.7 秒），掃描後 HTTPS 上傳恢復。Master 排隊掃描時會暫停新 HTTPS 請求，避免掃描搶不到共用鎖。瀏覽器實體裝置選擇與掃描仍需手動檢查；自動瀏覽器測試使用模擬 GATT。

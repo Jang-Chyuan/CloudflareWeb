@@ -500,3 +500,94 @@ test('relayed Slave 108 shows the same confirmed mode on map and detail', async 
   await expect(page.locator('.dog-map-label')).toContainText('裝置模式：追蹤中', { timeout: 10000 });
   expect(targets.every(([master, slave]) => master === 'eq.201' && slave === 'eq.108')).toBe(true);
 });
+
+
+test('Master Wi-Fi supports BLE paging, accepted receipt, refresh, removal and disconnect', async ({ page }) => {
+  await mockCloud(page);
+  await page.addInitScript(() => {
+    window.__wifiWrites = []; window.__wifiScanSupported = true; let command, scanPolls = 0;
+    const state = { ssids: ['Home', 'Office', '狗屋'], active: 'Office' };
+    const characteristic = {
+      async writeValueWithResponse(bytes) { command = JSON.parse(new TextDecoder().decode(bytes)); window.__wifiWrites.push(command);
+        if (command.action === 'upsert' && !state.ssids.includes(command.ssid)) state.ssids.push(command.ssid);
+        if (command.action === 'remove') state.ssids = state.ssids.filter(x => x !== command.ssid);
+      },
+      async readValue() {
+        if (command.action === 'scan' || command.action === 'scan_results') {
+          let response;
+          if (!window.__wifiScanSupported) response = {ok:false,error:'invalid_action'};
+          else if (command.action === 'scan') { scanPolls = 0; response = {ok:true,status:'accepted',scan_id:1}; }
+          else if (!scanPolls++) response = {ok:true,status:'pending',scan_id:1};
+          else response = {ok:true,status:'ready',scan_id:1,total:2,truncated:false,
+            networks:[command.offset===0?{ssid:'Garden',rssi:-40,secure:true}:{ssid:'Guest',rssi:-65,secure:false}],next:command.offset===0?1:null};
+          const bytes = new TextEncoder().encode(JSON.stringify(response)); return new DataView(bytes.buffer);
+        }
+        const response = command.action === 'list' ? { ok: true, active: window.__wifiActive || state.active, ssids: state.ssids.slice(command.offset, command.offset + 2), next: command.offset + 2 < state.ssids.length ? command.offset + 2 : null } : { ok: true, status: 'accepted' };
+        const bytes = new TextEncoder().encode(JSON.stringify(response)); return new DataView(bytes.buffer); },
+    };
+    const device = Object.assign(new EventTarget(), { name: 'DogGPS-Master201', gatt: { connected: false,
+      async connect() { this.connected = true; return { getPrimaryService: async () => ({ getCharacteristic: async () => characteristic }) }; },
+      disconnect() { this.connected = false; },
+    } });
+    window.__wifiDevice = device;
+    Object.defineProperty(navigator, 'bluetooth', { configurable: true, value: { requestDevice: async () => device } });
+  });
+  await login(page);
+  const credentialsInNetwork = [];
+  page.on('request', request => { if (request.postData()?.includes('local-only-secret')) credentialsInNetwork.push(request.url()); });
+  await page.getByRole('button', { name: 'Master Wi-Fi 設定', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Master Wi-Fi 設定' });
+  await dialog.getByRole('button', { name: '選擇並連線 Master' }).click();
+  await expect(dialog).toContainText('DogGPS-Master201');
+  await expect(dialog.getByRole('region', { name: 'Master Wi-Fi 狀態' }).locator('.wifi-ssid')).toHaveCount(3);
+  await page.screenshot({ path: 'test-results/master-wifi-desktop.png' });
+  await dialog.getByRole('region', { name: 'Master Wi-Fi 狀態' }).locator('.wifi-ssid').filter({ hasText: '狗屋' }).click();
+  await expect(dialog.getByLabel('Wi-Fi 名稱（SSID）')).toHaveValue('狗屋');
+  await dialog.getByRole('button', { name: '掃描附近 Wi-Fi', exact: true }).click();
+  const nearby = dialog.getByRole('region', { name: '附近 Wi-Fi' });
+  await expect(nearby.locator('.wifi-ssid')).toHaveCount(2);
+  await expect(nearby).toContainText('-40 dBm');
+  await nearby.locator('.wifi-ssid').filter({hasText:'Guest'}).click();
+  await expect(dialog.getByLabel('此網路不需要密碼')).toBeChecked();
+  await nearby.locator('.wifi-ssid').filter({hasText:'Garden'}).click();
+  await expect(dialog.getByLabel('Wi-Fi 名稱（SSID）')).toHaveValue('Garden');
+  await expect(dialog.getByLabel('此網路不需要密碼')).not.toBeChecked();
+  await dialog.getByLabel('Wi-Fi 名稱（SSID）').fill('New WiFi');
+  await dialog.getByLabel('Wi-Fi 密碼', { exact: true }).fill('local-only-secret');
+  await dialog.getByRole('button', { name: '傳送 Wi-Fi 設定' }).click();
+  await expect(dialog).toContainText('已確認儲存「New WiFi」');
+  await page.evaluate(() => { window.__wifiActive = 'New WiFi'; });
+  await expect(dialog.getByRole('region', { name: 'Master Wi-Fi 狀態' }).locator('strong')).toHaveText('New WiFi');
+  await expect(dialog.getByLabel('Wi-Fi 密碼', { exact: true })).toHaveValue('');
+  await dialog.getByRole('button', { name: '重新整理 Wi-Fi 清單' }).click();
+  await expect(dialog.getByRole('region', { name: 'Master Wi-Fi 狀態' }).locator('.wifi-ssid')).toHaveCount(4);
+  await dialog.getByRole('button', { name: '刪除 New WiFi', exact: true }).click();
+  await dialog.getByRole('button', { name: '確認刪除網路', exact: true }).click();
+  await dialog.getByRole('button', { name: '重新整理 Wi-Fi 清單' }).click();
+  await expect(dialog.getByRole('region', { name: 'Master Wi-Fi 狀態' }).locator('.wifi-ssid')).toHaveCount(3);
+  await page.evaluate(() => { window.__wifiScanSupported = false; });
+  await dialog.getByRole('button', { name: '掃描附近 Wi-Fi', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toContainText('韌體尚未支援');
+  await expect(dialog.getByLabel('Wi-Fi 名稱（SSID）')).toBeEnabled();
+  expect(credentialsInNetwork).toEqual([]);
+  expect(await page.evaluate(() => JSON.stringify(localStorage).includes('local-only-secret') || JSON.stringify(sessionStorage).includes('local-only-secret'))).toBe(false);
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await expect(dialog.getByRole('button', { name: '關閉 Wi-Fi 設定' })).toBeInViewport();
+  await page.screenshot({ path: 'test-results/master-wifi-mobile.png' });
+  await page.evaluate(() => { window.__wifiDevice.gatt.connected = false; window.__wifiDevice.dispatchEvent(new Event('gattserverdisconnected')); });
+  await expect(dialog.getByRole('alert')).toContainText('Master 已斷線');
+  await expect(dialog.getByRole('button', { name: '選擇並連線 Master' })).toBeEnabled();
+  await dialog.getByRole('button', { name: '關閉 Wi-Fi 設定' }).click();
+  await expect(dialog).toHaveCount(0);
+});
+
+test('Master Wi-Fi explains unsupported browser without attempting BLE', async ({ page }) => {
+  await mockCloud(page);
+  await page.addInitScript(() => Object.defineProperty(navigator, 'bluetooth', { configurable: true, value: undefined }));
+  await login(page);
+  await page.getByRole('button', { name: 'Master Wi-Fi 設定', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Master Wi-Fi 設定' });
+  await expect(dialog).toContainText('此瀏覽器不支援 Web Bluetooth');
+  await expect(dialog.getByRole('button', { name: '選擇並連線 Master' })).toHaveCount(0);
+});
