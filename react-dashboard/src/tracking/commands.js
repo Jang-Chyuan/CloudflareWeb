@@ -1,7 +1,8 @@
 export const COMMAND_FIELDS = 'id,master_id,slave_id,action,status,created_at,expires_at,completed_at,reported_mode,error_code,request_id';
+export const controlMasters = authorized => [5, 201].filter(id => authorized.includes(id));
 // Control ownership is independent of the Master forwarding the latest GPS.
 export function modeMasterId(dog, authorizedMasters) {
-  return [102, 104, 108].includes(dog.id) && authorizedMasters.includes(201) ? 201 : dog.masterId;
+  return [102, 104, 108].includes(dog.id) ? controlMasters(authorizedMasters)[0] ?? dog.masterId : dog.masterId;
 }
 export const pendingCommand = command => command && ['queued', 'claimed'].includes(command.status);
 export function commandLabel(command, now = Date.now()) {
@@ -22,17 +23,18 @@ export function deviceMode(command) {
   return { label: command.reported_mode === 1 ? '追蹤中' : '省電待機',
     tracking: command.reported_mode === 1, confirmedAt: timestamp };
 }
-export async function createDeviceCommand(client, action, requestId, slaveId = 102) {
+export async function createDeviceCommand(client, action, requestId, slaveId = 102, masterId = 5) {
+  if (![5,201].includes(masterId)) throw new Error('Unsupported Master');
   if (![102,104,108].includes(slaveId)) throw new Error('不支援的裝置');
   if (!['tracking', 'sleep'].includes(action)) throw new Error('不支援的命令');
   const { data, error } = await client.rpc('create_device_command', {
-    p_master_id: 201, p_slave_id: slaveId, p_action: action, p_request_id: requestId,
+    p_master_id: masterId, p_slave_id: slaveId, p_action: action, p_request_id: requestId,
   });
   if (error) throw error;
   if (!data?.id) throw new Error('命令回應不完整');
   return data;
 }
-export async function fetchLatestCommand(client, signal, masterId = 201, slaveId = 102) {
+export async function fetchLatestCommand(client, signal, masterId = 5, slaveId = 102) {
   const { data, error } = await client.from('device_commands').select(COMMAND_FIELDS)
     .eq('master_id', masterId).eq('slave_id', slaveId).order('created_at', { ascending: false })
     .order('id', { ascending: false }).limit(1).abortSignal(signal);

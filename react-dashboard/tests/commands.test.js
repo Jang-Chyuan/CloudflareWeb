@@ -6,7 +6,7 @@ test('tracking and sleep use fixed target and caller retry UUID', async () => {
   const client = { rpc: async (name, args) => { calls.push([name, args]); return { data: { id: 'command', action: args.p_action, status: 'queued' } }; } };
   for (const action of ['tracking', 'sleep']) await createDeviceCommand(client, action, 'retry-id');
   assert.deepEqual(calls.map(([name, args]) => [name, args.p_master_id, args.p_slave_id, args.p_action, args.p_request_id]),
-    [['create_device_command', 201, 102, 'tracking', 'retry-id'], ['create_device_command', 201, 102, 'sleep', 'retry-id']]);
+    [['create_device_command', 5, 102, 'tracking', 'retry-id'], ['create_device_command', 5, 102, 'sleep', 'retry-id']]);
   await assert.rejects(createDeviceCommand(client, 'wake', 'retry-id'));
 });
 test('write errors propagate and queued never claims execution success', async () => {
@@ -34,7 +34,7 @@ test('Slave 108 commands preserve target and reject unsupported slaves', async (
  const calls=[];
  const client={rpc:async(name,args)=>{calls.push(args);return {data:{id:'108',slave_id:args.p_slave_id}};}};
  const row=await createDeviceCommand(client,'tracking','request-108',108);
- assert.equal(row.slave_id,108);assert.equal(calls[0].p_master_id,201);
+ assert.equal(row.slave_id,108);assert.equal(calls[0].p_master_id,5);
  await assert.rejects(createDeviceCommand(client,'tracking','bad',106));
  assert.equal(calls.length,1);
 });
@@ -46,9 +46,19 @@ test('Slave 104 tracking/sleep preserve target and authorized Master', async () 
  for(const action of ['tracking','sleep']) {
   const row=await createDeviceCommand(client,action,'request-104-'+action,104);
   assert.equal(row.slave_id,104);
-  assert.equal(calls.at(-1).p_master_id,201);
+  assert.equal(calls.at(-1).p_master_id,5);
   assert.equal(calls.at(-1).p_action,action);
  }
  await assert.rejects(createDeviceCommand(client,'tracking','bad',106));
  assert.equal(calls.length,2);
 });
+
+ test('Master201 target is explicit and unsupported Masters never reach RPC', async () => {
+ const calls=[];
+ const client={rpc:async(name,args)=>{calls.push(args);return {data:{id:'ok'}};}};
+ for(const slave of [102,104,108]) for(const action of ['tracking','sleep'])
+  await createDeviceCommand(client,action,'id-'+slave+'-'+action,slave,201);
+ assert.deepEqual(calls.map(c=>c.p_master_id),Array(6).fill(201));
+ await assert.rejects(createDeviceCommand(client,'sleep','bad',102,7));
+ assert.equal(calls.length,6);
+ });

@@ -99,7 +99,7 @@ function Dashboard({ session, onWifiOpen }) {
       <footer className="app-footer"><span>DogWebTracker · Slave 追蹤</span><span>時間均為台灣時間（UTC+8）</span></footer>
     </main>
     {selectedDog && <DogDetails key={`${selectedDog.id}:${details?.history ? 'history' : 'live'}`} dog={selectedDog} rows={details?.history ? details.rows : cloud.rows} now={details?.history ? details.now : now} history={!!details?.history}
-      canControlSlave102={cloud.masters.includes(201)} aliases={names.aliases} onAlias={(id, alias) => names.saveName(id, selectedDog.masterId, alias)} onClose={closeDetails}
+      authorizedMasters={cloud.masters} aliases={names.aliases} onAlias={(id, alias) => names.saveName(id, selectedDog.masterId, alias)} onClose={closeDetails}
       />}
   </div>;
 }

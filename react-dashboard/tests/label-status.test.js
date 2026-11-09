@@ -11,11 +11,11 @@ const dog = { id: 102, masterId: 201, lastPacketAt: at, lastPositionAt: at - 600
 test('relayed GPS uses the authorized control Master for modes without replacing packet sources', () => {
   for (const id of [102, 104, 108]) {
     const relayed = { ...dog, id, masterId: 7, healthDisplay: null };
-    assert.equal(modeMasterId(relayed, [7, 201]), 201);
+    assert.equal(modeMasterId(relayed, [7, 5]), 5);
     assert.equal(modeMasterId(relayed, [7]), 7);
-    const command = { master_id: 201, slave_id: id, status: 'confirmed', reported_mode: 0,
+    const command = { master_id: 5, slave_id: id, status: 'confirmed', reported_mode: 0,
       completed_at: new Date(at + 500).toISOString() };
-    const input = { ...relayed, modeStatus: { masterId: 201, command, ready: true } };
+    const input = { ...relayed, modeStatus: { masterId: 5, command, ready: true } };
     assert.equal(labelMode(input), '省電待機');
     assert.equal(labelMode({ ...input, modeStatus: { ...input.modeStatus, ready: false } }), '省電待機（上次確認）');
     assert.equal(labelStatus(input).source, 'dog_telemetry');
@@ -25,7 +25,7 @@ test('relayed GPS uses the authorized control Master for modes without replacing
       assert.equal(labelMode({ ...input, modeStatus: { ...input.modeStatus, command: { ...command, ...invalid } } }), '未知');
     }
   }
-  assert.equal(modeMasterId({ id: 9, masterId: 7 }, [7, 201]), 7);
+  assert.equal(modeMasterId({ id: 9, masterId: 7 }, [7, 5]), 7);
 });
 test('tracking and scheduled GPS status use newer telemetry', () => {
   assert.deepEqual(labelStatus(dog), {source: 'dog_telemetry', packetAt: at, battery: 79, rssi: -85});

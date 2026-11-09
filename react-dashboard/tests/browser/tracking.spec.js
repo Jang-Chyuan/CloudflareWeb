@@ -43,7 +43,7 @@ async function mockCloud(page, clustered = false, remote = false) {
   });
   const rows = clustered ? [4, 6, 8, 108].map((slave, i) => packet(i + 1, slave, 15000, 25033000 + i * 15))
     : [packet(1, 2, 45000), packet(2, 2, 15000, 25033200), packet(3, 9, 2160000)];
-  if (remote) rows.splice(0, rows.length, { ...packet(1, 102, 15000), master_id: typeof remote === 'string' ? 5 : 201 });
+  if (remote) rows.splice(0, rows.length, { ...packet(1, 102, 15000), master_id: remote === 'relay' ? 201 : remote === 'relay-only' ? 7 : 5 });
   const requested = [];
   const names = [];
   await page.route('http://127.0.0.1:54321/**', async route => {
@@ -52,7 +52,7 @@ async function mockCloud(page, clustered = false, remote = false) {
     if (url.pathname.endsWith('/token')) body = { access_token: token, refresh_token: 'test_refresh_token', token_type: 'bearer', expires_in: 3600, user };
     else if (url.pathname.endsWith('/user')) body = user;
     else if (url.pathname.endsWith('/logout')) body = {};
-    else if (url.pathname.endsWith('/device_members')) body = Number(url.searchParams.get('offset')) > 0 ? [] : (remote === 'relay' ? [{ gateway_id: 'master_201', slave_id: null }, { gateway_id: 'master_5', slave_id: null }] : [{ gateway_id: remote === 'relay-only' ? 'master_5' : remote ? 'master_201' : 'master_5', slave_id: null }]);
+    else if (url.pathname.endsWith('/device_members')) body = Number(url.searchParams.get('offset')) > 0 ? [] : (remote === 'relay' ? [{ gateway_id: 'master_5', slave_id: null }, { gateway_id: 'master_201', slave_id: null }] : [{ gateway_id: remote === 'relay-only' ? 'master_7' : remote ? 'master_5' : 'master_5', slave_id: null }]);
     else if (url.pathname.endsWith('/dog_telemetry')) body = url.searchParams.has('or') ? [] : rows;
     else if (url.pathname.endsWith('/device_commands')) body = [];
     else if (url.pathname.endsWith('/dog_health')) body = [{
@@ -107,7 +107,7 @@ test('custom 15-day period queries older cloud routes, caches them and works off
   const start = Math.floor((Date.now() - 10 * 86400000) / 60000) * 60000;
   const end = start + 3600000;
   const values = [start - 1000, start + 1000, start + 61000, end + 1000].map((time, i) => ({
-    event_id: `00000000-0000-4000-8000-${String(201 + i).padStart(12, '0')}`,
+    event_id: `00000000-0000-4000-8000-${String(5 + i).padStart(12, '0')}`,
     master_id: 5, slave_id: 2, received_at: new Date(time).toISOString(),
     payload: { lat: 25033000 + i * 100, lon: 121565000 },
   }));
@@ -306,7 +306,7 @@ test('remote tracking and sleep write commands without claiming execution', asyn
   await expect(page.getByRole('button', { name: '要求省電待機', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: '要求省電待機', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Slave 102 遠端控制' })).toContainText('待機命令已送出，等待裝置確認');
-  expect(submitted.map(row => [row.p_master_id, row.p_slave_id, row.p_action])).toEqual([[201, 102, 'tracking'], [201, 102, 'sleep']]);
+  expect(submitted.map(row => [row.p_master_id, row.p_slave_id, row.p_action])).toEqual([[5, 102, 'tracking'], [5, 102, 'sleep']]);
   expect(submitted[0].p_request_id).not.toBe(submitted[1].p_request_id);
   latest = { ...latest, status: 'unconfirmed', completed_at: new Date().toISOString() };
   const retry = page.getByRole('button', { name: '重試省電待機命令', exact: true });
@@ -356,7 +356,7 @@ test('other devices have no remote control buttons', async ({ page }) => {
 
 test('device mode uses confirmed reported mode and Taiwan confirmation time', async ({ page }) => {
   await mockCloud(page, false, true);
-  let command = { id: 'mode-test', master_id: 201, slave_id: 102, action: 'tracking', status: 'queued', reported_mode: 1,
+  let command = { id: 'mode-test', master_id: 5, slave_id: 102, action: 'tracking', status: 'queued', reported_mode: 1,
     completed_at: '2026-11-01T02:00:00Z', expires_at: '2099-01-01T00:00:00Z' };
   let readFailure = false;
   await page.route('**/rest/v1/device_commands*', route => readFailure
@@ -387,7 +387,7 @@ test('device mode uses confirmed reported mode and Taiwan confirmation time', as
   await expect(page.locator('.device-commands')).toContainText('未收到確認，裝置模式未知');
 });
 
-test('Slave 102 controls remain available when telemetry arrives via Master 5', async ({ page }) => {
+test('Slave 102 controls use Master5 when telemetry arrives via Master201', async ({ page }) => {
   await mockCloud(page, false, 'relay');
   const submitted=[];
   await page.route('**/rest/v1/rpc/create_device_command', async route => {
@@ -397,14 +397,14 @@ test('Slave 102 controls remain available when telemetry arrives via Master 5', 
   await login(page,1);
   await page.locator('.dog-map-icon').click();
   const dialog=page.getByRole('dialog');
-  await expect(dialog).toContainText('Master 5');
-  await expect(dialog.locator('.device-commands')).toContainText('Master 201');
+  await expect(dialog).toContainText('Master 201');
+  await expect(dialog.locator('.device-commands')).toContainText('Master 5');
   await expect(dialog.getByRole('button',{name:'要求開始追蹤',exact:true})).toBeVisible();
   await dialog.getByRole('button',{name:'要求省電待機',exact:true}).click();
-  expect(submitted[0].p_master_id).toBe(201);
+  expect(submitted[0].p_master_id).toBe(5);
   expect(submitted[0].p_slave_id).toBe(102);
 });
-test('Master 5 access alone does not grant control of Slave 102 through Master 201', async ({ page }) => {
+test('Master7 access alone does not grant control through Master5', async ({ page }) => {
   await mockCloud(page, false, 'relay-only');
   await login(page,1);
   await page.locator('.dog-map-icon').click();
@@ -433,7 +433,7 @@ test('map distinguishes normal GPS, retained recent GPS and expired GPS', async 
   await expect(retained).toBeVisible();
 });
 
-test('Slave 108 detail controls send through Master 201 independently of telemetry source', async ({page}) => {
+test('Slave 108 detail controls send through Master 5 independently of telemetry source', async ({page}) => {
  await mockCloud(page,false,'relay');
  const at=new Date().toISOString();
  const row={event_id:'00000000-0000-4000-8000-000000000108',master_id:5,slave_id:108,seq:108,received_at:at,
@@ -446,12 +446,12 @@ test('Slave 108 detail controls send through Master 201 independently of telemet
  });
  await login(page,1);await page.locator('.dog-map-icon').click();
  const control=page.getByRole('region',{name:'Slave 108 遠端控制'});
- await expect(control).toContainText('Master 201');
+ await expect(control).toContainText('Master 5');
  await control.getByRole('button',{name:'要求開始追蹤',exact:true}).click();
- expect(submissions[0].p_slave_id).toBe(108);expect(submissions[0].p_master_id).toBe(201);
+ expect(submissions[0].p_slave_id).toBe(108);expect(submissions[0].p_master_id).toBe(5);
 });
 
-test('Slave 104 detail controls send through Master 201 independently of telemetry source', async ({page}) => {
+test('Slave 104 detail controls send through Master 5 independently of telemetry source', async ({page}) => {
  await mockCloud(page,false,'relay');
  const at=new Date().toISOString();
  const row={event_id:'00000000-0000-4000-8000-000000000104',master_id:5,slave_id:104,seq:104,received_at:at,
@@ -464,9 +464,9 @@ test('Slave 104 detail controls send through Master 201 independently of telemet
  });
  await login(page,1);await page.locator('.dog-map-icon').click();
  const control=page.getByRole('region',{name:'Slave 104 遠端控制'});
- await expect(control).toContainText('Master 201');
+ await expect(control).toContainText('Master 5');
  await control.getByRole('button',{name:'要求開始追蹤',exact:true}).click();
- expect(submissions[0].p_slave_id).toBe(104);expect(submissions[0].p_master_id).toBe(201);
+ expect(submissions[0].p_slave_id).toBe(104);expect(submissions[0].p_master_id).toBe(5);
 });
 
 test('relayed Slave 108 shows the same confirmed mode on map and detail', async ({ page }) => {
@@ -475,7 +475,7 @@ test('relayed Slave 108 shows the same confirmed mode on map and detail', async 
   const row = { event_id: '00000000-0000-4000-8000-000000000108', master_id: 7, slave_id: 108,
     received_at: at, payload: { lat: 25033000, lon: 121565000, batteryPercentage: 70, batteryValid: 1 }, rssi: -12 };
   await page.route('**/rest/v1/device_members*', route => route.fulfill({ json:
-    Number(new URL(route.request().url()).searchParams.get('offset')) > 0 ? [] : [{ gateway_id: 'master_201' }, { gateway_id: 'master_7' }] }));
+    Number(new URL(route.request().url()).searchParams.get('offset')) > 0 ? [] : [{ gateway_id: 'master_5' }, { gateway_id: 'master_7' }] }));
   await page.route('**/rest/v1/dog_telemetry*', route => route.fulfill({ json:
     new URL(route.request().url()).searchParams.has('or') ? [] : [row] }));
   let mode = 0;
@@ -483,8 +483,8 @@ test('relayed Slave 108 shows the same confirmed mode on map and detail', async 
   await page.route('**/rest/v1/device_commands*', route => {
     const params = new URL(route.request().url()).searchParams;
     targets.push([params.get('master_id'), params.get('slave_id')]);
-    return route.fulfill({ json: params.get('master_id') === 'eq.201' && params.get('slave_id') === 'eq.108' ? [{
-      id: 'confirmed-108', master_id: 201, slave_id: 108, action: mode ? 'tracking' : 'sleep',
+    return route.fulfill({ json: params.get('master_id') === 'eq.5' && params.get('slave_id') === 'eq.108' ? [{
+      id: 'confirmed-108', master_id: 5, slave_id: 108, action: mode ? 'tracking' : 'sleep',
       status: 'confirmed', reported_mode: mode, created_at: at, completed_at: at,
     }] : [] });
   });
@@ -498,7 +498,7 @@ test('relayed Slave 108 shows the same confirmed mode on map and detail', async 
   await expect(page.locator('.device-mode')).toContainText('追蹤中', { timeout: 10000 });
   await page.getByRole('button', { name: '關閉詳細資訊' }).click();
   await expect(page.locator('.dog-map-label')).toContainText('裝置模式：追蹤中', { timeout: 10000 });
-  expect(targets.every(([master, slave]) => master === 'eq.201' && slave === 'eq.108')).toBe(true);
+  expect(targets.every(([master, slave]) => master === 'eq.5' && slave === 'eq.108')).toBe(true);
 });
 
 
@@ -590,4 +590,82 @@ test('Master Wi-Fi explains unsupported browser without attempting BLE', async (
   const dialog = page.getByRole('dialog', { name: 'Master Wi-Fi 設定' });
   await expect(dialog).toContainText('此瀏覽器不支援 Web Bluetooth');
   await expect(dialog.getByRole('button', { name: '選擇並連線 Master' })).toHaveCount(0);
+});
+
+test('Master selector sends through 201 or both and keeps results separate', async ({ page }) => {
+  await mockCloud(page, false, true);
+  await page.route('**/rest/v1/device_members*', route => route.fulfill({json:Number(new URL(route.request().url()).searchParams.get('offset'))>0?[]:[{gateway_id:'master_5'},{gateway_id:'master_201'}]}));
+  const latest = {}, writes = [], queries = [];
+  await page.route('**/rest/v1/device_commands*', route => {
+    const id=Number(new URL(route.request().url()).searchParams.get('master_id').slice(3));
+    queries.push(id); return route.fulfill({json:latest[id] ? [latest[id]] : []});
+  });
+  await page.route('**/rest/v1/rpc/create_device_command', async route => {
+    const b=route.request().postDataJSON(); writes.push(b);
+    latest[b.p_master_id]={id:crypto.randomUUID(),master_id:b.p_master_id,slave_id:b.p_slave_id,
+      action:b.p_action,request_id:b.p_request_id,status:'confirmed',reported_mode:b.p_action==='tracking'?1:0,
+      created_at:new Date().toISOString(),completed_at:new Date().toISOString(),expires_at:'2099-01-01'};
+    await route.fulfill({json:latest[b.p_master_id]});
+  });
+  await login(page,1); await page.locator('.dog-map-icon').click();
+  const selector=page.getByRole('combobox',{name:'發送 Master'});
+  await expect(selector).toHaveValue('5');
+  await selector.selectOption('201');
+  await page.getByRole('button',{name:'要求開始追蹤',exact:true}).click();
+  expect(writes.map(b=>b.p_master_id)).toEqual([201]);
+  await expect(page.getByRole('region',{name:'Master 201 命令結果',exact:true})).toContainText('裝置已回覆追蹤命令');
+  await selector.selectOption('both');
+  await page.getByRole('button',{name:'要求省電待機',exact:true}).click();
+  expect(writes.slice(1).map(b=>[b.p_master_id,b.p_action])).toEqual([[5,'sleep'],[201,'sleep']]);
+  expect(new Set(writes.map(b=>b.p_request_id)).size).toBe(3);
+  for(const id of [5,201]) {
+    await expect(page.getByRole('region',{name:`Master ${id} 命令結果`,exact:true})).toContainText('裝置已回覆省電命令');
+    expect(queries).toContain(id);
+  }
+});
+
+test('dual send retries only the failed Master with the same UUID', async ({ page }) => {
+  await mockCloud(page,false,true);
+  await page.route('**/rest/v1/device_members*', route=>route.fulfill({json:Number(new URL(route.request().url()).searchParams.get('offset'))>0?[]:[{gateway_id:'master_5'},{gateway_id:'master_201'}]}));
+  const latest={}, writes=[]; let fail=true;
+  await page.route('**/rest/v1/device_commands*',route=>{
+    const id=Number(new URL(route.request().url()).searchParams.get('master_id').slice(3));
+    return route.fulfill({json:latest[id]?[latest[id]]:[]});
+  });
+  await page.route('**/rest/v1/rpc/create_device_command',async route=>{
+    const b=route.request().postDataJSON();writes.push(b);
+    if(b.p_master_id===201&&fail) return route.fulfill({status:503,json:{message:'unavailable'}});
+    latest[b.p_master_id]={id:crypto.randomUUID(),master_id:b.p_master_id,slave_id:102,action:b.p_action,
+      request_id:b.p_request_id,status:'confirmed',reported_mode:1,completed_at:new Date().toISOString(),expires_at:'2099-01-01'};
+    return route.fulfill({json:latest[b.p_master_id]});
+  });
+  await login(page,1); await page.locator('.dog-map-icon').click();
+  const selector=page.getByRole('combobox',{name:'發送 Master'});
+  await selector.selectOption('both');
+  await page.getByRole('button',{name:'要求開始追蹤',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Master 5 命令結果',exact:true})).toContainText('裝置已回覆追蹤命令');
+  await expect(page.getByRole('region',{name:'Master 201 命令結果',exact:true})).toContainText('送出未確認');
+  await expect(selector).toBeDisabled();
+  await expect(page.getByRole('button',{name:'要求省電待機',exact:true})).toBeDisabled();
+  fail=false;
+  await page.getByRole('button',{name:'重試追蹤命令（Master 201）',exact:true}).click();
+  await expect(page.getByRole('region',{name:'Master 201 命令結果',exact:true})).toContainText('裝置已回覆追蹤命令');
+  expect(writes.map(b=>b.p_master_id)).toEqual([5,201,201]);
+  expect(writes[1].p_request_id).toBe(writes[2].p_request_id);
+  expect(writes[0].p_request_id).not.toBe(writes[1].p_request_id);
+  await expect(selector).toBeEnabled();
+});
+
+test('Master201-only authorization enables 201 and disables Master5 and dual send', async ({page})=>{
+  await mockCloud(page,false,true);
+  await page.route('**/rest/v1/device_members*',route=>route.fulfill({json:Number(new URL(route.request().url()).searchParams.get('offset'))>0?[]:[{gateway_id:'master_201'}]}));
+  await page.route('**/rest/v1/dog_telemetry*',route=>route.fulfill({json:new URL(route.request().url()).searchParams.has('or')?[]:[{
+    event_id:'00000000-0000-4000-8000-000000000102',master_id:201,slave_id:102,seq:1,received_at:new Date(Date.now()-15000).toISOString(),
+    payload:{lat:25033000,lon:121565000,satellites:9,batteryPercentage:80,batteryValid:1},rssi:-40}]}));
+  await login(page,1); await page.locator('.dog-map-icon').click();
+  const selector=page.getByRole('combobox',{name:'發送 Master'});
+  await expect(selector).toHaveValue('201');
+  await expect(selector.locator('option[value="5"]')).toHaveJSProperty('disabled',true);
+  await expect(selector.locator('option[value="both"]')).toHaveJSProperty('disabled',true);
+  await expect(selector.locator('option[value="201"]')).toHaveJSProperty('disabled',false);
 });

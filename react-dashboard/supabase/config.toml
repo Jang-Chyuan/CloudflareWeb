@@ -1,2 +1,8 @@
 [functions.unlock-fixed-location]
 verify_jwt = true
+
+[functions.poll-device-command]
+verify_jwt = false
+
+[functions.report-device-command]
+verify_jwt = false
