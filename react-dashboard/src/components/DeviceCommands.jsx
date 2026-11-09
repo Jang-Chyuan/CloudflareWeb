@@ -100,7 +100,7 @@ export default function DeviceCommands({ slaveId = 102, authorizedMasters = [] }
       const label = commandLabel(command, now);
       return <section key={id} aria-label={`Master ${id} 命令結果`}>
         {targets.length > 1 && <h4>Master {id}</h4>}
-        <div className="device-mode" role="status" aria-live="polite"><span>裝置模式：</span><strong className={mode.tracking ? 'device-mode-tracking' : ''}>{mode.label}</strong>
+        <div className="device-mode" role="status" aria-live="polite"><span>此通道確認：</span><strong className={mode.tracking ? 'device-mode-tracking' : ''}>{mode.label}</strong>
           {mode.confirmedAt && <p>確認時間：{new Intl.DateTimeFormat('zh-TW', {timeZone:'Asia/Taipei', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false}).format(new Date(mode.confirmedAt))}（台灣時間）</p>}</div>
         <p role="status" aria-live="polite" className={label === '未收到確認，裝置模式未知' ? 'command-unconfirmed' :
           command?.status === 'confirmed' ? command.action === 'tracking' ? 'command-confirmed-tracking' : 'command-confirmed-sleep' : undefined}>{busy ? '正在送出命令…' : label}</p>

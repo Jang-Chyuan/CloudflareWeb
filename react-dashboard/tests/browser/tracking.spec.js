@@ -498,7 +498,7 @@ test('relayed Slave 108 shows the same confirmed mode on map and detail', async 
   await expect(page.locator('.device-mode')).toContainText('追蹤中', { timeout: 10000 });
   await page.getByRole('button', { name: '關閉詳細資訊' }).click();
   await expect(page.locator('.dog-map-label')).toContainText('裝置模式：追蹤中', { timeout: 10000 });
-  expect(targets.every(([master, slave]) => master === 'eq.5' && slave === 'eq.108')).toBe(true);
+  expect(targets.every(([master, slave]) => ['eq.5','eq.201'].includes(master) && slave === 'eq.108')).toBe(true);
 });
 
 
@@ -668,4 +668,31 @@ test('Master201-only authorization enables 201 and disables Master5 and dual sen
   await expect(selector.locator('option[value="5"]')).toHaveJSProperty('disabled',true);
   await expect(selector.locator('option[value="both"]')).toHaveJSProperty('disabled',true);
   await expect(selector.locator('option[value="201"]')).toHaveJSProperty('disabled',false);
+});
+
+test('Slave104 uses Master201 confirmation and retains it after Master5 fails', async ({page})=>{
+ await mockCloud(page,false,'relay');
+ const now=Date.now(), earlier=new Date(now-120000).toISOString(), done=new Date(now-100000).toISOString();
+ const commands={5:{id:'failed5',master_id:5,slave_id:104,status:'unconfirmed',action:'sleep',reported_mode:null,created_at:new Date(now-30000).toISOString(),expires_at:done},
+ 201:{id:'confirmed201',master_id:201,slave_id:104,status:'confirmed',action:'sleep',reported_mode:0,created_at:earlier,completed_at:done}};
+ await page.route('**/rest/v1/dog_telemetry*',route=>route.fulfill({json:new URL(route.request().url()).searchParams.has('or')?[]:[{
+  event_id:'00000000-0000-4000-8000-000000000104',master_id:5,slave_id:104,seq:1,received_at:new Date(now-15000).toISOString(),
+  payload:{lat:25033000,lon:121565000,satellites:9,batteryPercentage:80,batteryValid:1},rssi:-40}]}));
+ const queried=[];
+ await page.route('**/rest/v1/device_commands*',route=>{
+  const q=new URL(route.request().url()).searchParams,id=Number(q.get('master_id').slice(3));queried.push(id);
+  const row=commands[id];return route.fulfill({json:row&&(!q.get('status')||row.status==='confirmed')?[row]:[]});
+ });
+ await login(page,1);
+ await expect(page.locator('.dog-map-label')).toContainText('裝置模式：省電待機（上次確認）');
+ expect(queried).toContain(5);expect(queried).toContain(201);
+ await page.locator('.dog-map-icon').click();
+ await expect(page.locator('.slave-mode')).toContainText('省電待機（上次確認） · Master 201');
+ await page.getByRole('combobox',{name:'發送 Master'}).selectOption('201');
+ await expect(page.getByRole('region',{name:'Master 201 命令結果',exact:true})).toContainText('省電待機');
+ commands[201]={...commands[201],reported_mode:1,action:'tracking',created_at:new Date(now-10000).toISOString(),completed_at:new Date(now-5000).toISOString()};
+ await expect(page.locator('.slave-mode')).toHaveText('裝置模式：追蹤中 · Master 201',{timeout:10000});
+ await page.getByRole('button',{name:'關閉詳細資訊'}).click();
+ await expect(page.locator('.dog-map-label')).toContainText('裝置模式：追蹤中');
+ await expect(page.locator('.dog-map-label')).not.toContainText('上次確認');
 });

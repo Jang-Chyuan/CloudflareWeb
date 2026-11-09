@@ -41,3 +41,36 @@ export async function fetchLatestCommand(client, signal, masterId = 5, slaveId =
   if (error) throw error;
   return data?.[0] ?? null;
 }
+
+// Resolve device observations across authorized controllers; retain the last
+// confirmation explicitly when a newer request or a read failure adds uncertainty.
+export function resolveModeStatus(dog, authorizedMasters, states) {
+  const ids = [102,104,108].includes(dog.id) && controlMasters(authorizedMasters).length
+    ? controlMasters(authorizedMasters) : [dog.masterId];
+  const channels = ids.map(id => states[`${id}:${dog.id}`]);
+  const valid = c => c && ids.includes(c.master_id) && c.slave_id === dog.id;
+  const time = c => Date.parse(c?.completed_at) || 0;
+  const confirmations = channels.flatMap(c => [c?.command,c?.confirmed]).filter(c =>
+    valid(c) && c.status === 'confirmed' && [0,1].includes(c.reported_mode) && time(c));
+  confirmations.sort((a,b) => time(b)-time(a));
+  const command = confirmations[0];
+  if (!command) {
+    const latest = channels.map(c=>c?.command).filter(valid).sort((a,b)=>
+      (Date.parse(b.created_at)||0)-(Date.parse(a.created_at)||0))[0] ?? null;
+    return {command:latest,ready:channels.every(c=>c?.ready),masterId:latest?.master_id ?? ids[0]};
+  }
+  if (confirmations.some(c=>time(c)===time(command) && c.reported_mode!==command.reported_mode))
+    return {command:null,ready:true,masterId:ids[0]};
+  const newerUnconfirmed = channels.some(c => valid(c?.command) &&
+    !['confirmed','superseded'].includes(c.command.status) &&
+    (Date.parse(c.command.created_at)||0) > (Date.parse(command.created_at)||time(command)));
+  return {command,masterId:command.master_id,ready:channels.every(c=>c?.ready) && !newerUnconfirmed};
+}
+
+export async function fetchLatestConfirmedCommand(client, signal, masterId, slaveId) {
+  const {data,error} = await client.from('device_commands').select(COMMAND_FIELDS)
+    .eq('master_id',masterId).eq('slave_id',slaveId).eq('status','confirmed')
+    .order('completed_at',{ascending:false}).order('id',{ascending:false}).limit(1).abortSignal(signal);
+  if(error) throw error;
+  return data?.[0] ?? null;
+}
