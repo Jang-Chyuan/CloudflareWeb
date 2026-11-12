@@ -56,9 +56,19 @@ test('Slave 104 tracking/sleep preserve target and authorized Master', async () 
  test('Master201 target is explicit and unsupported Masters never reach RPC', async () => {
  const calls=[];
  const client={rpc:async(name,args)=>{calls.push(args);return {data:{id:'ok'}};}};
- for(const slave of [102,104,108]) for(const action of ['tracking','sleep'])
+ for(const slave of [8,102,104,108]) for(const action of ['tracking','sleep'])
   await createDeviceCommand(client,action,'id-'+slave+'-'+action,slave,201);
- assert.deepEqual(calls.map(c=>c.p_master_id),Array(6).fill(201));
+ assert.deepEqual(calls.map(c=>c.p_master_id),Array(8).fill(201));
  await assert.rejects(createDeviceCommand(client,'sleep','bad',102,7));
- assert.equal(calls.length,6);
+ assert.equal(calls.length,8);
  });
+
+test('Slave 8 supports tracking and sleep through either Master', async () => {
+ const calls=[];
+ const client={rpc:async(name,args)=>{calls.push(args);return {data:{id:'slave8',slave_id:args.p_slave_id}};}};
+ for(const master of [5,201]) for(const action of ['tracking','sleep']) {
+  const row=await createDeviceCommand(client,action,'request-8',8,master);
+  assert.equal(row.slave_id,8);
+  assert.deepEqual(calls.at(-1),{p_master_id:master,p_slave_id:8,p_action:action,p_request_id:'request-8'});
+ }
+});

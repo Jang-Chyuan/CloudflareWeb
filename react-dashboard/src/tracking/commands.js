@@ -2,7 +2,7 @@ export const COMMAND_FIELDS = 'id,master_id,slave_id,action,status,created_at,ex
 export const controlMasters = authorized => [5, 201].filter(id => authorized.includes(id));
 // Control ownership is independent of the Master forwarding the latest GPS.
 export function modeMasterId(dog, authorizedMasters) {
-  return [102, 104, 108].includes(dog.id) ? controlMasters(authorizedMasters)[0] ?? dog.masterId : dog.masterId;
+  return [8, 102, 104, 108].includes(dog.id) ? controlMasters(authorizedMasters)[0] ?? dog.masterId : dog.masterId;
 }
 export const pendingCommand = command => command && ['queued', 'claimed'].includes(command.status);
 export function commandLabel(command, now = Date.now()) {
@@ -25,7 +25,7 @@ export function deviceMode(command) {
 }
 export async function createDeviceCommand(client, action, requestId, slaveId = 102, masterId = 5) {
   if (![5,201].includes(masterId)) throw new Error('Unsupported Master');
-  if (![102,104,108].includes(slaveId)) throw new Error('不支援的裝置');
+  if (![8,102,104,108].includes(slaveId)) throw new Error('不支援的裝置');
   if (!['tracking', 'sleep'].includes(action)) throw new Error('不支援的命令');
   const { data, error } = await client.rpc('create_device_command', {
     p_master_id: masterId, p_slave_id: slaveId, p_action: action, p_request_id: requestId,
@@ -45,7 +45,7 @@ export async function fetchLatestCommand(client, signal, masterId = 5, slaveId =
 // Resolve device observations across authorized controllers; retain the last
 // confirmation explicitly when a newer request or a read failure adds uncertainty.
 export function resolveModeStatus(dog, authorizedMasters, states) {
-  const ids = [102,104,108].includes(dog.id) && controlMasters(authorizedMasters).length
+  const ids = [8,102,104,108].includes(dog.id) && controlMasters(authorizedMasters).length
     ? controlMasters(authorizedMasters) : [dog.masterId];
   const channels = ids.map(id => states[`${id}:${dog.id}`]);
   const valid = c => c && ids.includes(c.master_id) && c.slave_id === dog.id;

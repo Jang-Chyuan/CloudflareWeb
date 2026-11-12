@@ -4,7 +4,7 @@ import { fetchLatestCommand, fetchLatestConfirmedCommand, controlMasters } from 
 
 export function useDogModes(owner, dogs, authorizedMasters = []) {
   const [commands, setCommands] = useState({});
-  const devices = JSON.stringify(dogs.flatMap(dog => ([102,104,108].includes(dog.id) && controlMasters(authorizedMasters).length ? controlMasters(authorizedMasters) : [dog.masterId]).map(id => [id,dog.id])).sort((a, b) => a[0] - b[0] || a[1] - b[1]));
+  const devices = JSON.stringify(dogs.flatMap(dog => ([8,102,104,108].includes(dog.id) && controlMasters(authorizedMasters).length ? controlMasters(authorizedMasters) : [dog.masterId]).map(id => [id,dog.id])).sort((a, b) => a[0] - b[0] || a[1] - b[1]));
   useEffect(() => {
     let active = true, busy = false, controller;
     async function refresh() {
