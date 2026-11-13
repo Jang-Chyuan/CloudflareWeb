@@ -745,19 +745,22 @@ test('latest cloud batch is visible and cached while older data is still loading
   const now=Date.now();
   const latest={event_id:'00000000-0000-4000-8000-000000000901',master_id:5,slave_id:2,seq:1,received_at:new Date(now-1000).toISOString(),payload:{lat:25033000,lon:121565000,satellites:9,batteryPercentage:82,batteryValid:1}};
   const older={...latest,event_id:'00000000-0000-4000-8000-000000000902',seq:2,received_at:new Date(now-60000).toISOString(),payload:{...latest.payload,lat:25032000}};
-  let release;
+  let release, releasePoll;
   const gate=new Promise(resolve=>{release=resolve;});
+  const pollGate=new Promise(resolve=>{releasePoll=resolve;});
   let calls=0;
   await page.route('**/rest/v1/dog_telemetry*',async route=>{
     const call=calls++;
     if(call===0) return route.fulfill({json:[latest]});
     if(call===1) {await gate;return route.fulfill({json:[older]});}
+    if(call>=3) await pollGate;
     return route.fulfill({json:[]});
   });
   try {
     await login(page,1);
     await expect.poll(()=>calls).toBe(2);
     await expect(page.locator('.dog-map-icon')).toHaveCount(1);
+    await expect(page.locator('.dog-map-label .dog-sync-status')).toHaveText('\u8cc7\u6599\u540c\u6b65\u4e2d...');
     const cachedCount=()=>page.evaluate(async owner=>{
       const cache=await import('/src/tracking/telemetryCache.js');
       return (await cache.readCachedTelemetry(owner,Date.now()-86400000,Date.now())).rows.length;
@@ -765,7 +768,10 @@ test('latest cloud batch is visible and cached while older data is still loading
     await expect.poll(cachedCount).toBe(1);
     release();
     await expect.poll(cachedCount).toBe(2);
-  } finally {release();}
+    await expect(page.locator('.dog-map-label .dog-sync-status')).toHaveCount(0);
+    await expect.poll(()=>calls,{timeout:10000}).toBeGreaterThanOrEqual(4);
+    await expect(page.locator('.dog-map-label .dog-sync-status')).toHaveCount(0);
+  } finally {release();releasePoll();}
 });
 
 

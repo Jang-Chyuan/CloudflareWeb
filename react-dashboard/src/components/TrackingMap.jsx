@@ -53,7 +53,7 @@ export default function TrackingMap({ dogs, routes, hidden, focus, aliases, show
       }
     }
     const routeOverlay = createRouteOverlay(maps, map, visibleRoutes, aliases);
-    const overlay = createDogOverlay(maps, map, visible, aliases, id => detailsRef.current(id));
+    const overlay = createDogOverlay(maps, map, visible, aliases, id => detailsRef.current(id), { syncing });
     const following = visible.find(dog => dog.id === focus);
     let fitListener;
     if (following) {
@@ -69,7 +69,7 @@ export default function TrackingMap({ dogs, routes, hidden, focus, aliases, show
       fitKey.current = key;
     }
     return () => { overlay.setMap(null); routeOverlay.setMap(null); polylines.forEach(line => line.setMap(null)); fitListener?.remove(); };
-  }, [ready, dogs, routes, hidden, focus, aliases, showTrails, viewKey]);
+  }, [ready, dogs, routes, hidden, focus, aliases, showTrails, viewKey, syncing]);
 
   return <div className="map-panel">
     <div ref={host} className="map-canvas" aria-label="Slave 位置與移動軌跡地圖" />

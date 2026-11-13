@@ -2,7 +2,7 @@ import { labelStatus, labelMode } from './labelStatus';
 ﻿import { dogColor, dogName, formatTime, positionDisplayState } from './telemetry';
 import { placeDogLabel, labelLineEnd, spreadDogIcons } from './labels';
 
-export function createDogOverlay(maps, map, dogs, aliases, onDetails) {
+export function createDogOverlay(maps, map, dogs, aliases, onDetails, { syncing = false } = {}) {
   class DogOverlay extends maps.OverlayView {
     onAdd() {
       this.root = document.createElement('div');
@@ -47,6 +47,13 @@ export function createDogOverlay(maps, map, dogs, aliases, onDetails) {
           `最後定位：${formatTime(dog.lastPositionAt)}`,
         ]) {
           const row = document.createElement('div'); row.textContent = text; label.appendChild(row);
+        }
+        if (syncing) {
+          const status = document.createElement('div');
+          status.className = 'dog-sync-status';
+          status.setAttribute('role', 'status');
+          status.textContent = '\u8cc7\u6599\u540c\u6b65\u4e2d...';
+          label.appendChild(status);
         }
         if (positionState === 'retained') {
           const warning = document.createElement('div');

@@ -33,6 +33,7 @@ export function useCloudTracking(owner) {
   const [cacheWarning, setCacheWarning] = useState('');
   const gpsQueryTimes = useRef(new Map());
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [lastSync, setLastSync] = useState(null);
   const [error, setError] = useState('');
@@ -59,8 +60,9 @@ export function useCloudTracking(owner) {
   }, [owner, rows, masters]);
   useEffect(() => {
     // Do not merge a new account's first cache batch with the previous account.
-    setRows([]); setMasters([]); setLastSync(null);
+    setRows([]); setMasters([]); setLastSync(null); setSyncing(false);
     if (!owner || !supabase) return;
+    setLoading(true); setSyncing(true);
     let active = true, busy = false, initialized = false, cursor = null, reconciledAt = 0, knownMasters = '';
     let controller;
     async function refresh(force = false) {
@@ -80,6 +82,7 @@ export function useCloudTracking(owner) {
         catch { if (active) setCacheWarning('無法更新本機儲存，雲端資料仍可正常讀取。'); }
         if (!active || controller.signal.aborted) return;
         const full = force || !cursor || now - reconciledAt >= 600000 || ids.join(',') !== knownMasters;
+        setSyncing(full);
         const start = full ? now - DAY : Math.max(now - DAY, cursor - 300000);
         const incoming = await fetchTelemetry({ client: supabase, masterIds: ids, start, end: now,
           signal: controller.signal, newestFirst: true,
@@ -107,7 +110,7 @@ export function useCloudTracking(owner) {
         if (active) setError(controller.signal.aborted ? '讀取逾時，請重試或確認網路連線。' : failure.message);
       } finally {
         clearTimeout(timeout); busy = false;
-        if (active) setLoading(false);
+        if (active) { setLoading(false); setSyncing(false); }
       }
     }
     refreshRef.current = () => refresh(true);
@@ -124,7 +127,7 @@ export function useCloudTracking(owner) {
       if (cached.rows.length) setCacheWarning('已載入本機資料，等待雲端核對；離線資料可能不完整。');
     }).catch(() => {
       if (active) setCacheWarning('無法使用本機儲存；仍可從雲端讀取資料。');
-    }).finally(() => { initialized = true; if (active) refresh(); });
+    }).finally(() => { initialized = true; if (active) { setLoading(false); if (!navigator.onLine || document.visibilityState === 'hidden') setSyncing(false); refresh(); } });
     const interval = setInterval(() => refresh(), 5000);
     const resume = () => { if (document.visibilityState === 'visible') refresh(); };
     document.addEventListener('visibilitychange', resume);
@@ -137,7 +140,7 @@ export function useCloudTracking(owner) {
   }, [owner]);
   const refresh = useCallback(() => refreshRef.current(), []);
   return { rows, masters, historicalFixes: historicalFixes.filter(row => masters.includes(row.master_id)),
-    loading, progress, lastSync, error, warning: [gpsWarning, cacheWarning].filter(Boolean).join(' '), refresh };
+    loading, syncing, progress, lastSync, error, warning: [gpsWarning, cacheWarning].filter(Boolean).join(' '), refresh };
 }
 
 export function usePreferences(owner) {

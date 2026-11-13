@@ -120,7 +120,7 @@ function Dashboard({ session, onWifiOpen }) {
     <main className="dashboard-main">
       {tab === 'live' ? <>
         <div className="tracking-layout"><section className="tracking-map-area">
-          <TrackingMap dogs={mapDogs} routes={routes} hidden={preferences.hidden} focus={focus} aliases={names.aliases} showTrails={preferences.trails} onDetails={id => setDetails({ id })} viewKey="live" syncing={cloud.loading} />
+          <TrackingMap dogs={mapDogs} routes={routes} hidden={preferences.hidden} focus={focus} aliases={names.aliases} showTrails={preferences.trails} onDetails={id => setDetails({ id })} viewKey="live" syncing={cloud.syncing} />
           <div className="map-footer"><span>🐕 點選犬隻圖示查看詳細資訊</span><span>黃色：顯示最後有效位置；×：定位超過 35 分鐘未更新</span></div>
         </section></div>
       </> : <History owner={session.user.id} initialMode={historyMode} masters={cloud.masters} aliases={names.aliases} hidden={preferences.hidden} onDetails={setDetails} />}
