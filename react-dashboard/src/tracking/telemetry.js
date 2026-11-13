@@ -92,7 +92,7 @@ export function retainDogPositions(dogs, previous, now) {
   return current.sort((a, b) => a.id - b.id);
 }
 
-// Never bridge missing fixes, a >2 minute gap, or a change of Master.
+// Connect dense tracking or supported scheduled intervals; never bridge missing fixes or Master changes.
 export function buildRoutes(rows, startAt = -Infinity, endAt = Infinity) {
   const groups = new Map();
   for (const row of rows) {
@@ -116,7 +116,8 @@ export function buildRoutes(rows, startAt = -Infinity, endAt = Infinity) {
       // Cadence describes sampling, not a confirmed device mode. A missing fix,
       // skipped scheduled report or Master switch must never be bridged.
       const kind = gap > 0 && gap <= 120000 ? 'tracking'
-        : gap >= 20 * 60000 && gap <= 35 * 60000 ? 'scheduled' : null;
+        : ((gap >= 20 * 60000 && gap <= 35 * 60000)
+          || (gap >= 55 * 60000 && gap <= 70 * 60000)) ? 'scheduled' : null;
       if (!previous || !kind || row.master_id !== previous.master_id
         || Math.abs(row.slave_lon - previous.slave_lon) > 180) finish();
       else {

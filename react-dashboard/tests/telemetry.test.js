@@ -136,7 +136,7 @@ test('route breaks at missing fixes, long gaps and changes of Master', () => {
 });
 
 test('scheduled fixes retain raw coordinates and connect only within 20–35 minutes', () => {
-  const samples = [0, 30, 60, 120].map((minutes, index) =>
+  const samples = [0, 30, 60, 180].map((minutes, index) =>
     parseTelemetry(raw(now + minutes * 60000, { lat: 25033000 + index * 1000 })));
   const route = buildRoutes(samples)[0];
   assert.equal(route.points.length, 4);
@@ -279,4 +279,29 @@ test('latest batch is small and is processed before older batches are requested'
     onPage:async () => { await new Promise(resolve=>setTimeout(resolve,5)); events.push('latest-saved'); }});
   assert.deepEqual(limits,[100,500]);
   assert.deepEqual(events,['request-0','latest-saved','request-1']);
+});
+
+
+test('hourly scheduled fixes connect within inclusive 55-70 minute boundaries only', () => {
+  for (const minutes of [55,60,61,64,70]) {
+    const rows=[parseTelemetry(raw(now)),parseTelemetry(raw(now+minutes*60000,{lat:25034000}))];
+    const route=buildRoutes(rows)[0];
+    assert.deepEqual(route.sections.map(s=>[s.kind,s.points.length]),[['scheduled',2]],String(minutes));
+    assert.deepEqual(route.sections[0].points,rows.map(row=>[row.slave_lat,row.slave_lon]));
+    assert.equal(route.trackingMeters,0);
+  }
+  for (const minutes of [54.999,70.001,120,123]) {
+    const route=buildRoutes([parseTelemetry(raw(now)),parseTelemetry(raw(now+minutes*60000,{lat:25034000}))])[0];
+    assert.equal(route.sections.length,0,String(minutes));
+    assert.equal(route.scheduledMeters,0);
+  }
+});
+
+test('hourly routes do not bridge invalid fixes or a change of Master', () => {
+  const first=parseTelemetry(raw(now));
+  const invalid=parseTelemetry(raw(now+30*60000,{lat:0,lon:0}));
+  const last=parseTelemetry(raw(now+60*60000,{lat:25034000}));
+  assert.equal(buildRoutes([first,invalid,last])[0].sections.length,0);
+  const otherMaster=parseTelemetry(raw(now+60*60000,{lat:25034000},2,7));
+  assert.equal(buildRoutes([first,otherMaster])[0].sections.length,0);
 });

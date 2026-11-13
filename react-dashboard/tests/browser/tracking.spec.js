@@ -756,3 +756,22 @@ test('latest cloud batch is visible and cached while older data is still loading
     await expect.poll(cachedCount).toBe(2);
   } finally {release();}
 });
+
+
+test('24h hourly scheduled routes are dashed and a two-hour gap stays disconnected', async ({page}) => {
+  await mockCloud(page);
+  const now=Date.now();
+  const rows=[241,181,61,1].map((minutes,i)=>({
+    event_id:`00000000-0000-4000-8000-${String(i+990).padStart(12,'0')}`,
+    master_id:5,slave_id:102,seq:i,received_at:new Date(now-minutes*60000).toISOString(),
+    payload:{lat:25033000+i*1000,lon:121565000,satellites:7,batteryPercentage:80,batteryValid:1},
+  }));
+  await page.route('**/rest/v1/dog_telemetry*',route=>route.fulfill({json:new URL(route.request().url()).searchParams.has('or')?[]:rows}));
+  await login(page,1);
+  await page.locator('#route-window').selectOption('1440');
+  await expect(page.locator('.route-points circle')).toHaveCount(4);
+  await expect.poll(()=>page.evaluate(()=>window.__routeLines.filter(line=>line.map).map(line=>({
+    dashed:line.options.strokeOpacity===0 && line.options.icons.length>0,
+    count:line.options.path.length,
+  })))).toEqual([{dashed:true,count:2},{dashed:true,count:2}]);
+});
