@@ -33,3 +33,5 @@ deployed to dog-gps. Both existing device tokens matched firmware and were kept
 unchanged. COM10 Master5 polling now returns HTTP200 after verified TLS; status
 uploads also return HTTP200. This deployment did not publish the website or
 flash the Slaves. See C:/Dog_gps/dogLora_Master_5/docs/MASTER5_CLOUD_AUTH_FIX.md.
+
+Slave 4/6: tracking and sleep use Master 5 only. Apply migration `202611130001_slave4_6_control.sql` before publishing the updated frontend. Master 201 retains its existing Slave 8/102/104/108 targets. Firmware must be flashed separately.

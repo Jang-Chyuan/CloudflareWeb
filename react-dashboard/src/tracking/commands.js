@@ -1,8 +1,11 @@
 export const COMMAND_FIELDS = 'id,master_id,slave_id,action,status,created_at,expires_at,completed_at,reported_mode,error_code,request_id';
-export const controlMasters = authorized => [5, 201].filter(id => authorized.includes(id));
+export const CONTROL_SLAVE_IDS = [4, 6, 8, 102, 104, 108];
+export const supportsControl = slaveId => CONTROL_SLAVE_IDS.includes(slaveId);
+export const controlMasters = (authorized, slaveId) => [5, 201].filter(id =>
+  authorized.includes(id) && (id === 5 || ![4, 6].includes(slaveId)));
 // Control ownership is independent of the Master forwarding the latest GPS.
 export function modeMasterId(dog, authorizedMasters) {
-  return [8, 102, 104, 108].includes(dog.id) ? controlMasters(authorizedMasters)[0] ?? dog.masterId : dog.masterId;
+  return supportsControl(dog.id) ? controlMasters(authorizedMasters, dog.id)[0] ?? dog.masterId : dog.masterId;
 }
 export const pendingCommand = command => command && ['queued', 'claimed'].includes(command.status);
 export function commandLabel(command, now = Date.now()) {
@@ -25,7 +28,8 @@ export function deviceMode(command) {
 }
 export async function createDeviceCommand(client, action, requestId, slaveId = 102, masterId = 5) {
   if (![5,201].includes(masterId)) throw new Error('Unsupported Master');
-  if (![8,102,104,108].includes(slaveId)) throw new Error('不支援的裝置');
+  if (!controlMasters([masterId], slaveId).length) throw new Error('Unsupported Master for this Slave');
+  if (!supportsControl(slaveId)) throw new Error('不支援的裝置');
   if (!['tracking', 'sleep'].includes(action)) throw new Error('不支援的命令');
   const { data, error } = await client.rpc('create_device_command', {
     p_master_id: masterId, p_slave_id: slaveId, p_action: action, p_request_id: requestId,
@@ -45,8 +49,8 @@ export async function fetchLatestCommand(client, signal, masterId = 5, slaveId =
 // Resolve device observations across authorized controllers; retain the last
 // confirmation explicitly when a newer request or a read failure adds uncertainty.
 export function resolveModeStatus(dog, authorizedMasters, states) {
-  const ids = [8,102,104,108].includes(dog.id) && controlMasters(authorizedMasters).length
-    ? controlMasters(authorizedMasters) : [dog.masterId];
+  const ids = supportsControl(dog.id) && controlMasters(authorizedMasters, dog.id).length
+    ? controlMasters(authorizedMasters, dog.id) : [dog.masterId];
   const channels = ids.map(id => states[`${id}:${dog.id}`]);
   const valid = c => c && ids.includes(c.master_id) && c.slave_id === dog.id;
   const time = c => Date.parse(c?.completed_at) || 0;

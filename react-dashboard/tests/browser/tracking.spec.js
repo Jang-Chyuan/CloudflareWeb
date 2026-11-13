@@ -696,3 +696,34 @@ test('Slave104 uses Master201 confirmation and retains it after Master5 fails', 
  await expect(page.locator('.dog-map-label')).toContainText('裝置模式：追蹤中');
  await expect(page.locator('.dog-map-label')).not.toContainText('上次確認');
 });
+
+for (const slave of [4, 6]) test(`Slave ${slave} tracking and sleep use Master 5`, async ({page}) => {
+  await mockCloud(page, false, 'relay');
+  const at = new Date().toISOString();
+  await page.route('**/rest/v1/dog_telemetry*', route => route.fulfill({json:
+    new URL(route.request().url()).searchParams.has('or') ? [] : [{
+      event_id:'00000000-0000-4000-8000-000000000004',master_id:5,slave_id:slave,seq:1,received_at:at,
+      payload:{lat:25033000,lon:121565000,satellites:9,batteryPercentage:80,batteryValid:1},rssi:-40}]}));
+  let latest = null;
+  const submitted = [];
+  await page.route('**/rest/v1/device_commands*', route => route.fulfill({json:latest ? [latest] : []}));
+  await page.route('**/rest/v1/rpc/create_device_command', async route => {
+    const body=route.request().postDataJSON(); submitted.push(body);
+    latest={id:crypto.randomUUID(),master_id:body.p_master_id,slave_id:body.p_slave_id,
+      action:body.p_action,status:'confirmed',reported_mode:body.p_action==='tracking'?1:0,
+      created_at:at,completed_at:new Date().toISOString(),expires_at:'2099-01-01T00:00:00Z'};
+    await route.fulfill({json:latest});
+  });
+  await login(page,1);
+  await page.locator('.dog-map-icon').click();
+  const control=page.locator('.device-commands');
+  await expect(control).toBeVisible();
+  await expect(control.locator('select')).toHaveValue('5');
+  await expect(control.locator('option[value="201"]')).toHaveJSProperty('disabled',true);
+  await control.locator('.command-buttons button').nth(0).click();
+  await expect.poll(()=>submitted.length).toBe(1);
+  await expect(control.locator('.command-buttons button').nth(1)).toBeEnabled();
+  await control.locator('.command-buttons button').nth(1).click();
+  await expect.poll(()=>submitted.length).toBe(2);
+  expect(submitted.map(b=>[b.p_master_id,b.p_slave_id,b.p_action])).toEqual([[5,slave,'tracking'],[5,slave,'sleep']]);
+});

@@ -8,7 +8,7 @@ const isFailed = (command, now) => command && (['unconfirmed', 'expired', 'rejec
   (pendingCommand(command) && !isWaiting(command, now)));
 
 export default function DeviceCommands({ slaveId = 102, authorizedMasters = [] }) {
-  const allowed = controlMasters(authorizedMasters), allowedKey = allowed.join(',');
+  const allowed = controlMasters(authorizedMasters, slaveId), allowedKey = allowed.join(',');
   const [choice, setChoice] = useState(String(allowed[0] ?? 5));
   const selected = choice === 'both' && allowed.length === 2 ? 'both' :
     allowed.includes(Number(choice)) ? choice : String(allowed[0]);
