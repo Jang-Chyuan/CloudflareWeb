@@ -66,6 +66,9 @@ function Dashboard({ session, onWifiOpen }) {
   })), [dogs, health.health, modes, cloud.masters]);
   const filtered = dogs.filter(dog => `${names.aliases[dog.id] ?? ''} ${dog.id} Master ${dog.masterId}`.toLowerCase().includes(search.toLowerCase()));
   const selectedDog = details?.history ? details.dog : mapDogs.find(dog => dog.id === details?.id);
+  const selectedRoute = useMemo(() => details?.history
+    ? buildRoutes(details.rows, -Infinity, details.now).find(route => route.id === details.dog.id)
+    : routes.find(route => route.id === details?.id), [details, routes]);
   const closeDetails = useCallback(() => setDetails(null), []);
   function toggleDog(id) {
     save({ hidden: preferences.hidden.includes(id) ? preferences.hidden.filter(value => value !== id) : [...preferences.hidden, id] });
@@ -127,7 +130,7 @@ function Dashboard({ session, onWifiOpen }) {
       <footer className="app-footer"><span>DogWebTracker · Slave 追蹤</span><span>時間均為台灣時間（UTC+8）</span></footer>
     </main>
     {selectedDog && <DogDetails key={`${selectedDog.id}:${details?.history ? 'history' : 'live'}`} dog={selectedDog} rows={details?.history ? details.rows : cloud.rows} now={details?.history ? details.now : now} history={!!details?.history}
-      authorizedMasters={cloud.masters} aliases={names.aliases} onAlias={(id, alias) => names.saveName(id, selectedDog.masterId, alias)} onClose={closeDetails}
+      route={selectedRoute} authorizedMasters={cloud.masters} aliases={names.aliases} onAlias={(id, alias) => names.saveName(id, selectedDog.masterId, alias)} onClose={closeDetails}
       />}
   </div>;
 }

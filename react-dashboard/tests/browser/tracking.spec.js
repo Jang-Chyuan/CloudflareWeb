@@ -18,8 +18,12 @@ test('sparse routes show fixes and dashed connections alongside dense solid trac
   await page.locator('.settings-heading button').click();
   await expect(page.locator('.route-points .gps-fix-marker')).toHaveCount(4);
   await expect(page.locator('.route-points .gps-fix-marker').first()).toHaveText(/\*/);
-  await expect(page.locator('.route-legend')).toContainText('定位點間直線距離');
-  await expect(page.locator('.route-legend')).toContainText('連續軌跡估算');
+  await expect(page.locator('.route-legend')).toHaveCount(0);
+  await page.locator('.dog-map-icon').click();
+  await expect(page.locator('.detail-modal .route-summary')).toHaveAttribute('data-slave-id','2');
+  await expect(page.locator('.route-summary')).toContainText('\u5b9a\u4f4d\u9ede\u9593\u76f4\u7dda\u8ddd\u96e2');
+  await expect(page.locator('.route-summary')).toContainText('\u9023\u7e8c\u8ecc\u8de1\u4f30\u7b97');
+  await page.locator('.detail-header button').click();
   expect(await page.evaluate(() => window.__routeLines.filter(line => line.map).map(line => ({
     dashed: line.options.strokeOpacity === 0 && line.options.icons.length > 0,
     count: line.options.path.length,
@@ -33,7 +37,9 @@ test('sparse routes show fixes and dashed connections alongside dense solid trac
   await page.getByLabel('移動路徑', { exact: true }).check();
   await page.locator('.settings-heading button').click();
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.locator('.route-legend')).toBeVisible();
+  await expect(page.locator('.route-legend')).toHaveCount(0);
+  await page.locator('.dog-map-icon').click();
+  await expect(page.locator('.detail-modal .route-summary')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
@@ -760,7 +766,7 @@ test('latest cloud batch is visible and cached while older data is still loading
     await login(page,1);
     await expect.poll(()=>calls).toBe(2);
     await expect(page.locator('.dog-map-icon')).toHaveCount(1);
-    await expect(page.locator('.dog-map-label .dog-sync-status')).toHaveText('\u8cc7\u6599\u540c\u6b65\u4e2d...');
+    await expect(page.locator('.dog-map-label .dog-sync-status')).toHaveCount(0);
     const cachedCount=()=>page.evaluate(async owner=>{
       const cache=await import('/src/tracking/telemetryCache.js');
       return (await cache.readCachedTelemetry(owner,Date.now()-86400000,Date.now())).rows.length;

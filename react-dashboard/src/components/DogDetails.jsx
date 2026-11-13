@@ -17,7 +17,7 @@ function ActivityChart({ rows, id, now }) {
   </section>;
 }
 
-export default function DogDetails({ dog, rows, now, aliases, onAlias, onClose, history = false, authorizedMasters = [] }) {
+export default function DogDetails({ dog, rows, now, aliases, onAlias, onClose, history = false, authorizedMasters = [], route = null }) {
   const panel = useRef(null);
   const [alias, setAlias] = useState(aliases[dog.id] ?? '');
   const [aliasBusy, setAliasBusy] = useState(false), [aliasError, setAliasError] = useState(''), [aliasSaved, setAliasSaved] = useState(false);
@@ -43,6 +43,17 @@ export default function DogDetails({ dog, rows, now, aliases, onAlias, onClose, 
   return <div className="modal-backdrop" onClick={onClose}><section className="detail-modal" ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="dog-detail-title" onClick={e => e.stopPropagation()}>
     <header className="detail-header"><div><span className="eyebrow">SLAVE {dog.id}</span><h2 id="dog-detail-title">{dogName(dog.id, aliases)}</h2></div><button className="icon-button" aria-label="關閉詳細資訊" onClick={onClose}>×</button></header>
     <div className="detail-body"><p>來源：經 Master {dog.masterId} · 雲端</p><p className={dog.stale ? 'warning' : ''}>{dog.status}{dog.retained ? ' · 最後有效位置，非最新定位' : ''}</p><Metrics dog={dog} />
+      <section className="detail-section route-summary" data-slave-id={dog.id}>
+        <h3>路徑與定位資料</h3>
+        <p>* GPS 定位點　━ 連續取樣　┄ 定時回報位置連接示意</p>
+        <p>依取樣間隔分類，非裝置模式確認；虛線不代表實際行走路線。</p>
+        <p>{dogName(dog.id, aliases)}：
+          {route?.sections.some(part => part.kind === 'tracking') && `連續軌跡估算 ${(route.trackingMeters / 1000).toFixed(2)} km；`}
+          {route?.sections.some(part => part.kind === 'scheduled') && `定位點間直線距離 ${(route.scheduledMeters / 1000).toFixed(2)} km；`}
+          {route?.points.length ?? 0} 個定位點
+        </p>
+        <p>距離僅計算目前所選時間範圍的已連接線段，受 GPS 誤差與取樣間隔影響。</p>
+      </section>
       {!history && controlMasters(authorizedMasters, dog.id).length > 0 && supportsControl(dog.id) && <><p className="slave-mode" role="status">裝置模式：{labelMode(dog)}{dog.modeStatus?.command && ` · Master ${dog.modeStatus.masterId}`}</p><DeviceCommands key={dog.id} slaveId={dog.id} authorizedMasters={authorizedMasters} /></>}
       <dl className="detail-grid"><div><dt>最後封包</dt><dd>{formatTime(dog.lastPacketAt)}</dd></div><div><dt>有效定位</dt><dd>{formatTime(dog.lastPositionAt)}</dd></div>
         <div><dt>衛星</dt><dd>{packet.satellites ?? '—'}</dd></div><div><dt>HDOP</dt><dd>{packet.hdop ?? '—'}</dd></div>

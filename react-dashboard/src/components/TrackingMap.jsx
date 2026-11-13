@@ -1,6 +1,6 @@
 ﻿import React, { useEffect, useRef, useState } from 'react';
 import { loadGoogleMaps } from '../lib/googleMaps';
-import { dogColor, dogName } from '../tracking/telemetry';
+import { dogColor } from '../tracking/telemetry';
 import { createDogOverlay } from '../tracking/googleDogOverlay';
 import { createRouteOverlay } from '../tracking/routeOverlay';
 
@@ -73,16 +73,6 @@ export default function TrackingMap({ dogs, routes, hidden, focus, aliases, show
 
   return <div className="map-panel">
     <div ref={host} className="map-canvas" aria-label="Slave 位置與移動軌跡地圖" />
-    {showTrails && <div className="route-legend" role="note">
-      <div>* GPS 定位點　━ 連續取樣　┄ 定時回報位置連接示意</div>
-      <div>依取樣間隔分類，非裝置模式確認；虛線不代表實際行走路線。</div>
-      {routes.filter(route => !hidden.includes(route.id) && route.points.length).map(route => <div key={route.id}>
-        {dogName(route.id, aliases)}：{route.sections.some(part => part.kind === 'tracking') && `連續軌跡估算 ${(route.trackingMeters / 1000).toFixed(2)} km；`}
-        {route.sections.some(part => part.kind === 'scheduled') && `定位點間直線距離 ${(route.scheduledMeters / 1000).toFixed(2)} km；`}
-        {route.points.length} 個定位點
-      </div>)}
-      <div>距離僅計算已連接線段，受 GPS 誤差與取樣間隔影響。</div>
-    </div>}
     {error && <div className="map-notice" role="alert">{error}</div>}
     {!error && !ready && <div className="map-empty" role="status">正在載入 Google 地圖…</div>}
     {ready && !dogs.some(dog => dog.position && !hidden.includes(dog.id)) &&

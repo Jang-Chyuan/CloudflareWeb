@@ -48,7 +48,7 @@ export async function listMasters(client, owner, signal) {
 
 // Page until empty: Supabase can impose a limit below the requested page size.
 // Keep timestamp microseconds and UUID in the cursor rather than using offsets.
-export async function fetchTelemetry({ client, masterIds, start, end, signal, onProgress = () => {}, newestFirst = false, onPage = () => {}, firstPageSize = 100, pageSize = 500 }) {
+export async function fetchTelemetry({ client, masterIds, start, end, signal, onProgress = () => {}, newestFirst = false, onPage = () => {}, firstPageSize = 10, pageSize = 500 }) {
   if (!masterIds.length) return [];
   const records = [];
   const seen = new Set();

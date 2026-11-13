@@ -91,6 +91,7 @@ export function useCloudTracking(owner) {
             if (active && !controller.signal.aborted) {
               setRows(old => mergeRows(old.filter(row => ids.includes(row.master_id)), page, now));
               setLastSync(now);
+              setSyncing(false); // Latest batch is visible; older pages load quietly.
               await new Promise(resolve => setTimeout(resolve, 0));
               if (!active || controller.signal.aborted) return;
               try {

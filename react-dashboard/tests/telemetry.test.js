@@ -277,7 +277,7 @@ test('latest batch is small and is processed before older batches are requested'
   }};
   await fetchTelemetry({client,masterIds:[5],start:now-DAY,end:now,signal:new AbortController().signal,newestFirst:true,
     onPage:async () => { await new Promise(resolve=>setTimeout(resolve,5)); events.push('latest-saved'); }});
-  assert.deepEqual(limits,[100,500]);
+  assert.deepEqual(limits,[10,500]);
   assert.deepEqual(events,['request-0','latest-saved','request-1']);
 });
 
