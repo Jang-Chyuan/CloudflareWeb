@@ -48,7 +48,7 @@ export async function listMasters(client, owner, signal) {
 
 // Page until empty: Supabase can impose a limit below the requested page size.
 // Keep timestamp microseconds and UUID in the cursor rather than using offsets.
-export async function fetchTelemetry({ client, masterIds, start, end, signal, onProgress = () => {}, newestFirst = false, onPage = () => {} }) {
+export async function fetchTelemetry({ client, masterIds, start, end, signal, onProgress = () => {}, newestFirst = false, onPage = () => {}, firstPageSize = 100, pageSize = 500 }) {
   if (!masterIds.length) return [];
   const records = [];
   const seen = new Set();
@@ -57,7 +57,7 @@ export async function fetchTelemetry({ client, masterIds, start, end, signal, on
     if (signal.aborted) throw new DOMException('已取消', 'AbortError');
     let query = client.from('dog_telemetry').select(FIELDS).in('master_id', masterIds)
       .gte('received_at', new Date(start).toISOString()).lt('received_at', new Date(end).toISOString())
-      .order('received_at', { ascending: !newestFirst }).order('event_id', { ascending: !newestFirst }).limit(1000);
+      .order('received_at', { ascending: !newestFirst }).order('event_id', { ascending: !newestFirst }).limit(cursor ? pageSize : firstPageSize);
     const direction = newestFirst ? 'lt' : 'gt';
     if (cursor) query = query.or(`received_at.${direction}.${cursor.time},and(received_at.eq.${cursor.time},event_id.${direction}.${cursor.id})`);
     const { data, error } = await query.abortSignal(signal);
@@ -73,7 +73,9 @@ export async function fetchTelemetry({ client, masterIds, start, end, signal, on
     cursor = { time: last.received_at, id: last.event_id };
     if (records.length > 250000) throw new Error('查詢資料超過 25 萬筆，請縮小日期範圍或選擇單一 Master。');
     onProgress(records.length);
-    onPage(page);
+    await onPage(page);
+    // Give the browser a chance to show this batch before older requests.
+    await new Promise(resolve => setTimeout(resolve, 0));
   }
 }
 

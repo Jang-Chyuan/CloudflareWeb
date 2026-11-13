@@ -260,3 +260,23 @@ test('legacy fixed positions are excluded from cache and position retention', ()
   assert.deepEqual(readPositionCache(storage, 'owner'), []);
   assert.deepEqual(retainDogPositions([], [cached], now), []);
 });
+
+
+test('latest batch is small and is processed before older batches are requested', async () => {
+  const limits = [], events = [];
+  let call = 0;
+  const client = {from() {
+    const q = {};
+    for (const method of ['select','in','gte','lt','order','or']) q[method] = () => q;
+    q.limit = size => { limits.push(size); return q; };
+    q.abortSignal = async () => {
+      events.push('request-' + call);
+      return {data: call++ === 0 ? [raw(now - 1000)] : []};
+    };
+    return q;
+  }};
+  await fetchTelemetry({client,masterIds:[5],start:now-DAY,end:now,signal:new AbortController().signal,newestFirst:true,
+    onPage:async () => { await new Promise(resolve=>setTimeout(resolve,5)); events.push('latest-saved'); }});
+  assert.deepEqual(limits,[100,500]);
+  assert.deepEqual(events,['request-0','latest-saved','request-1']);
+});

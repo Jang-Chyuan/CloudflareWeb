@@ -58,6 +58,8 @@ export function useCloudTracking(owner) {
     return () => { active = false; controller.abort(); clearTimeout(timeout); };
   }, [owner, rows, masters]);
   useEffect(() => {
+    // Do not merge a new account's first cache batch with the previous account.
+    setRows([]); setMasters([]); setLastSync(null);
     if (!owner || !supabase) return;
     let active = true, busy = false, initialized = false, cursor = null, reconciledAt = 0, knownMasters = '';
     let controller;
@@ -82,18 +84,23 @@ export function useCloudTracking(owner) {
         const incoming = await fetchTelemetry({ client: supabase, masterIds: ids, start, end: now,
           signal: controller.signal, newestFirst: true,
           onProgress: count => { if (active) setProgress(count); },
-          onPage: page => {
+          onPage: async page => {
             if (active && !controller.signal.aborted) {
               setRows(old => mergeRows(old.filter(row => ids.includes(row.master_id)), page, now));
+              setLastSync(now);
+              await new Promise(resolve => setTimeout(resolve, 0));
+              if (!active || controller.signal.aborted) return;
+              try {
+                await saveCachedTelemetry(owner, page, now);
+                if (active) setCacheWarning('');
+              } catch {
+                if (active) setCacheWarning('???????????????????');
+              }
             }
           } });
         if (!active || controller.signal.aborted) return;
         setMasters(ids); setRows(old => mergeRows(full ? [] : old.filter(row => ids.includes(row.master_id)), incoming, now));
         setLastSync(now);
-        try {
-          await saveCachedTelemetry(owner, incoming, now);
-          if (active) setCacheWarning('');
-        } catch { if (active) setCacheWarning('本機儲存失敗或空間不足；目前資料僅保留在記憶體。'); }
         cursor = now; knownMasters = ids.join(',');
         if (full) reconciledAt = now;
       } catch (failure) {
@@ -104,7 +111,13 @@ export function useCloudTracking(owner) {
       }
     }
     refreshRef.current = () => refresh(true);
-    readCachedTelemetry(owner, Date.now() - DAY, Date.now()).then(cached => {
+    readCachedTelemetry(owner, Date.now() - DAY, Date.now(), {
+      onPage: cached => {
+        if (!active) return;
+        setMasters(cached.masters);
+        setRows(old => mergeRows(old, cached.rows, Date.now()));
+      },
+    }).then(cached => {
       if (!active) return;
       setMasters(cached.masters);
       setRows(mergeRows([], cached.rows, Date.now()));

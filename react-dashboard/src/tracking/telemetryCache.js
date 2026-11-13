@@ -35,15 +35,28 @@ async function transaction(mode, operation) {
   } finally { db.close(); }
 }
 
-export function readCachedTelemetry(owner, start, end) {
+export function readCachedTelemetry(owner, start, end, { onPage = () => {}, batchSize = 200 } = {}) {
   return transaction('readonly', (tx, done) => {
     const account = tx.objectStore('accounts').get(owner);
-    const request = tx.objectStore('packets').index('ownerTime')
-      .getAll(IDBKeyRange.bound([owner, start], [owner, end], false, true));
-    request.onsuccess = () => {
+    account.onsuccess = () => {
       const allowed = account.result?.masters ?? [];
-      done({ masters: allowed, rows: request.result.filter(row => allowed.includes(row.master_id))
-        .map(({ owner: ignored, ...row }) => row) });
+      const rows = [];
+      let batch = [];
+      const publish = () => {
+        if (batch.length) { onPage({ masters: allowed, rows: batch }); batch = []; }
+      };
+      const request = tx.objectStore('packets').index('ownerTime')
+        .openCursor(IDBKeyRange.bound([owner, start], [owner, end], false, true), 'prev');
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) { publish(); done({ masters: allowed, rows }); return; }
+        if (allowed.includes(cursor.value.master_id)) {
+          const { owner: ignored, ...row } = cursor.value;
+          rows.push(row); batch.push(row);
+          if (batch.length >= batchSize) publish();
+        }
+        cursor.continue();
+      };
     };
   });
 }

@@ -39,3 +39,19 @@ test('IndexedDB persists packets and isolates accounts, ranges and revoked permi
   expect(result.reallowed.rows.map(row => row.id)).toEqual(['two']);
   expect(result.expired.rows).toEqual([]);
 });
+
+
+test('cached packets publish newest batches before completion', async ({page}) => {
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    const cache = await import('/src/tracking/telemetryCache.js');
+    const now = Date.now();
+    await cache.updateCachedMasters('batch-test',[5],now);
+    await cache.saveCachedTelemetry('batch-test',Array.from({length:5},(_,i)=>({id:String(i),master_id:5,received_at:now-1000*(i+1)})),now);
+    const events=[];
+    const all=await cache.readCachedTelemetry('batch-test',now-10000,now,{batchSize:2,onPage:page=>events.push(page.rows.map(r=>r.id))});
+    return {events,all:all.rows.map(r=>r.id)};
+  });
+  expect(result.events).toEqual([['0','1'],['2','3'],['4']]);
+  expect(result.all).toEqual(['0','1','2','3','4']);
+});
