@@ -13,7 +13,9 @@ test('sparse routes show fixes and dashed connections alongside dense solid trac
   }));
   await page.route('**/rest/v1/dog_telemetry*', route => route.fulfill({ json: new URL(route.request().url()).searchParams.has('or') ? [] : rows }));
   await login(page, 1);
+  await page.locator('.settings-toggle').click();
   await page.locator('#route-window').selectOption('360');
+  await page.locator('.settings-heading button').click();
   await expect(page.locator('.route-points .gps-fix-marker')).toHaveCount(4);
   await expect(page.locator('.route-points .gps-fix-marker').first()).toHaveText(/\*/);
   await expect(page.locator('.route-legend')).toContainText('定位點間直線距離');
@@ -22,10 +24,14 @@ test('sparse routes show fixes and dashed connections alongside dense solid trac
     dashed: line.options.strokeOpacity === 0 && line.options.icons.length > 0,
     count: line.options.path.length,
   })))).toEqual([{ dashed: true, count: 3 }, { dashed: false, count: 2 }]);
+  await page.locator('.settings-toggle').click();
   await page.getByLabel('移動路徑', { exact: true }).uncheck();
+  await page.locator('.settings-heading button').click();
   await expect(page.locator('.route-points .gps-fix-marker')).toHaveCount(0);
   await expect(page.locator('.route-legend')).toHaveCount(0);
+  await page.locator('.settings-toggle').click();
   await page.getByLabel('移動路徑', { exact: true }).check();
+  await page.locator('.settings-heading button').click();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator('.route-legend')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -80,9 +86,11 @@ async function login(page, dogCount = 2, showAll = true) {
   await page.getByLabel('Email', { exact: true }).fill('test@example.com');
   await page.getByLabel('密碼', { exact: true }).fill('test_password');
   await page.getByRole('button', { name: '登入', exact: true }).click();
+  await page.locator('.settings-toggle').click();
   await expect(page.getByRole('button', { name: '登出', exact: true })).toBeVisible();
   await expect(page.locator('.dog-card')).toHaveCount(dogCount);
   if (showAll) await page.getByRole('button', { name: '顯示全部', exact: true }).click();
+  await page.locator('.settings-heading button').click();
 }
 
 test('downloaded packets restore after reload and support offline history', async ({ page }) => {
@@ -125,7 +133,9 @@ test('custom 15-day period queries older cloud routes, caches them and works off
   });
   const inputTime = time => new Date(time + 8 * 3600000).toISOString().slice(0, 16);
   async function selectPeriod() {
+  await page.locator('.settings-toggle').click();
     await page.locator('#route-window').selectOption('custom');
+  await page.locator('.settings-heading button').click();
     await expect(page.getByLabel('查詢方式')).toHaveValue('time');
     await page.getByLabel('開始時間（台灣）').fill(inputTime(start));
     await page.getByLabel('結束時間（台灣）').fill(inputTime(end));
@@ -769,7 +779,9 @@ test('24h hourly scheduled routes are dashed and a two-hour gap stays disconnect
   }));
   await page.route('**/rest/v1/dog_telemetry*',route=>route.fulfill({json:new URL(route.request().url()).searchParams.has('or')?[]:rows}));
   await login(page,1);
+  await page.locator('.settings-toggle').click();
   await page.locator('#route-window').selectOption('1440');
+  await page.locator('.settings-heading button').click();
   await expect(page.locator('.route-points .gps-fix-marker')).toHaveCount(4);
   await expect(page.locator('.route-points .gps-fix-marker').first()).toHaveText(/\*/);
   await expect.poll(()=>page.evaluate(()=>window.__routeLines.filter(line=>line.map).map(line=>({
@@ -797,4 +809,35 @@ test('GPS asterisks have a visible viewport even when Maps panes have zero size'
   expect(result).toMatchObject({width:400,height:300,text:'*',x:'200',y:'150'});
   expect(result.markerWidth).toBeGreaterThan(0);
   expect(result.markerHeight).toBeGreaterThan(0);
+});
+
+
+test('map-first dashboard opens controls only in settings on desktop and mobile', async ({page}) => {
+  await mockCloud(page);
+  await login(page);
+  const map=page.locator('.map-canvas');
+  await expect(page.locator('.settings-panel')).not.toBeVisible();
+  for(const size of [{width:1280,height:800},{width:390,height:844}]) {
+    await page.setViewportSize(size);
+    await expect.poll(async()=>Math.round((await map.boundingBox()).height)).toBe(size.height);
+    const box=await map.boundingBox();
+    expect(Math.round(box.width)).toBe(size.width);
+    expect(Math.round(box.x)).toBe(0); expect(Math.round(box.y)).toBe(0);
+    await page.locator('.settings-toggle').click();
+    await expect(page.locator('.settings-panel')).toBeVisible();
+    await expect(page.locator('.settings-panel #route-window')).toBeVisible();
+    await expect(page.locator('.settings-panel .dog-list')).toBeVisible();
+    await page.locator('#route-window').selectOption('1440');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.settings-panel')).not.toBeVisible();
+    await expect(page.locator('.settings-toggle')).toBeFocused();
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  }
+  await page.screenshot({path:'test-results/map-first-mobile.png'});
+  await page.locator('.settings-toggle').click();
+  await page.locator('.app-header nav button').nth(1).click();
+  await expect(page.locator('.history-page')).toBeVisible();
+  await expect(page.locator('.settings-panel')).not.toBeVisible();
+  await page.locator('.return-to-map').click();
+  await expect(map).toBeVisible();
 });

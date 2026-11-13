@@ -19,7 +19,7 @@ export default function TrackingMap({ dogs, routes, hidden, focus, aliases, show
         center: { lat: 23.7, lng: 121 }, zoom: 7, maxZoom: 19,
         mapTypeControl: true,
         mapTypeControlOptions: { mapTypeIds: ['roadmap', 'satellite'] },
-        streetViewControl: false, fullscreenControl: true, scaleControl: true,
+        streetViewControl: false, fullscreenControl: false, scaleControl: true,
         clickableIcons: false, gestureHandling: 'greedy',
       });
       mapRef.current = map;
