@@ -14,7 +14,8 @@ test('sparse routes show fixes and dashed connections alongside dense solid trac
   await page.route('**/rest/v1/dog_telemetry*', route => route.fulfill({ json: new URL(route.request().url()).searchParams.has('or') ? [] : rows }));
   await login(page, 1);
   await page.locator('#route-window').selectOption('360');
-  await expect(page.locator('.route-points circle')).toHaveCount(4);
+  await expect(page.locator('.route-points .gps-fix-marker')).toHaveCount(4);
+  await expect(page.locator('.route-points .gps-fix-marker').first()).toHaveText(/\*/);
   await expect(page.locator('.route-legend')).toContainText('定位點間直線距離');
   await expect(page.locator('.route-legend')).toContainText('連續軌跡估算');
   expect(await page.evaluate(() => window.__routeLines.filter(line => line.map).map(line => ({
@@ -22,7 +23,7 @@ test('sparse routes show fixes and dashed connections alongside dense solid trac
     count: line.options.path.length,
   })))).toEqual([{ dashed: true, count: 3 }, { dashed: false, count: 2 }]);
   await page.getByLabel('移動路徑', { exact: true }).uncheck();
-  await expect(page.locator('.route-points circle')).toHaveCount(0);
+  await expect(page.locator('.route-points .gps-fix-marker')).toHaveCount(0);
   await expect(page.locator('.route-legend')).toHaveCount(0);
   await page.getByLabel('移動路徑', { exact: true }).check();
   await page.setViewportSize({ width: 390, height: 844 });
@@ -129,7 +130,7 @@ test('custom 15-day period queries older cloud routes, caches them and works off
     await page.getByLabel('開始時間（台灣）').fill(inputTime(start));
     await page.getByLabel('結束時間（台灣）').fill(inputTime(end));
     await page.getByRole('button', { name: '查詢軌跡', exact: true }).click();
-    await expect(page.locator('.route-points circle')).toHaveCount(2);
+    await expect(page.locator('.route-points .gps-fix-marker')).toHaveCount(2);
   }
   await selectPeriod();
   expect(requestedRange).toEqual({ lower: start, upper: end });
@@ -769,9 +770,31 @@ test('24h hourly scheduled routes are dashed and a two-hour gap stays disconnect
   await page.route('**/rest/v1/dog_telemetry*',route=>route.fulfill({json:new URL(route.request().url()).searchParams.has('or')?[]:rows}));
   await login(page,1);
   await page.locator('#route-window').selectOption('1440');
-  await expect(page.locator('.route-points circle')).toHaveCount(4);
+  await expect(page.locator('.route-points .gps-fix-marker')).toHaveCount(4);
+  await expect(page.locator('.route-points .gps-fix-marker').first()).toHaveText(/\*/);
   await expect.poll(()=>page.evaluate(()=>window.__routeLines.filter(line=>line.map).map(line=>({
     dashed:line.options.strokeOpacity===0 && line.options.icons.length>0,
     count:line.options.path.length,
   })))).toEqual([{dashed:true,count:2},{dashed:true,count:2}]);
+});
+
+
+test('GPS asterisks have a visible viewport even when Maps panes have zero size', async ({page}) => {
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    const {createRouteOverlay}=await import('/src/tracking/routeOverlay.js');
+    const div=document.createElement('div');
+    Object.assign(div.style,{width:'400px',height:'300px',position:'relative'});
+    document.body.appendChild(div);
+    const map=new google.maps.Map(div,{center:{lat:25,lng:121},zoom:16});
+    Object.assign(map.pane.style,{inset:'auto',width:'0px',height:'0px'});
+    createRouteOverlay(google.maps,map,[{id:102,points:[{position:[25,121],time:Date.now()}]}],{});
+    const root=div.querySelector('.route-points'), marker=root.querySelector('.gps-fix-marker');
+    const svg=root.getBoundingClientRect(), box=marker.getBoundingClientRect();
+    return {width:svg.width,height:svg.height,text:marker.childNodes[0].textContent,
+      markerWidth:box.width,markerHeight:box.height,x:marker.getAttribute('x'),y:marker.getAttribute('y')};
+  });
+  expect(result).toMatchObject({width:400,height:300,text:'*',x:'200',y:'150'});
+  expect(result.markerWidth).toBeGreaterThan(0);
+  expect(result.markerHeight).toBeGreaterThan(0);
 });

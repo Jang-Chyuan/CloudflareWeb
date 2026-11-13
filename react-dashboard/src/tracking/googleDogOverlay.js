@@ -84,9 +84,13 @@ export function createDogOverlay(maps, map, dogs, aliases, onDetails) {
         Object.assign(icon.style, { left: `${p.x - 19}px`, top: `${p.y - 19}px` });
         if (Math.hypot(p.x - original.x, p.y - original.y) > 1) {
           lines.push({ start: original, end: p }); drawLine(original, p, color);
-          const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-          for (const [key, value] of Object.entries({ cx: original.x, cy: original.y, r: 3, fill: color })) circle.setAttribute(key, value);
-          this.svg.appendChild(circle);
+          const marker = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          marker.classList.add('gps-fix-marker');
+          marker.textContent = '*';
+          for (const [key, value] of Object.entries({ x: original.x, y: original.y, fill: color,
+            'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-family': 'monospace',
+            'font-size': 22, 'font-weight': 'bold', stroke: 'white', 'stroke-width': 2, 'paint-order': 'stroke' })) marker.setAttribute(key, value);
+          this.svg.appendChild(marker);
         }
       });
       this.items.forEach(({ label, color }, i) => {

@@ -74,7 +74,7 @@ export default function TrackingMap({ dogs, routes, hidden, focus, aliases, show
   return <div className="map-panel">
     <div ref={host} className="map-canvas" aria-label="Slave 位置與移動軌跡地圖" />
     {showTrails && <div className="route-legend" role="note">
-      <div>● GPS 定位點　━ 連續取樣　┄ 定時回報位置連接示意</div>
+      <div>* GPS 定位點　━ 連續取樣　┄ 定時回報位置連接示意</div>
       <div>依取樣間隔分類，非裝置模式確認；虛線不代表實際行走路線。</div>
       {routes.filter(route => !hidden.includes(route.id) && route.points.length).map(route => <div key={route.id}>
         {dogName(route.id, aliases)}：{route.sections.some(part => part.kind === 'tracking') && `連續軌跡估算 ${(route.trackingMeters / 1000).toFixed(2)} km；`}
