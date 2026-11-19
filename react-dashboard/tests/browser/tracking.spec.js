@@ -714,7 +714,7 @@ test('Slave104 uses Master201 confirmation and retains it after Master5 fails', 
  await expect(page.locator('.dog-map-label')).not.toContainText('上次確認');
 });
 
-for (const slave of [4, 6]) test(`Slave ${slave} tracking and sleep use Master 5`, async ({page}) => {
+for (const slave of [4, 6]) test(`Slave ${slave} tracking and sleep use Master ${slave === 4 ? 201 : 5}`, async ({page}) => {
   await mockCloud(page, false, 'relay');
   const at = new Date().toISOString();
   await page.route('**/rest/v1/dog_telemetry*', route => route.fulfill({json:
@@ -736,13 +736,14 @@ for (const slave of [4, 6]) test(`Slave ${slave} tracking and sleep use Master 5
   const control=page.locator('.device-commands');
   await expect(control).toBeVisible();
   await expect(control.locator('select')).toHaveValue('5');
-  await expect(control.locator('option[value="201"]')).toHaveJSProperty('disabled',true);
+  await expect(control.locator('option[value="201"]')).toHaveJSProperty('disabled',slave === 6);
+  if (slave === 4) await control.locator('select').selectOption('201');
   await control.locator('.command-buttons button').nth(0).click();
   await expect.poll(()=>submitted.length).toBe(1);
   await expect(control.locator('.command-buttons button').nth(1)).toBeEnabled();
   await control.locator('.command-buttons button').nth(1).click();
   await expect.poll(()=>submitted.length).toBe(2);
-  expect(submitted.map(b=>[b.p_master_id,b.p_slave_id,b.p_action])).toEqual([[5,slave,'tracking'],[5,slave,'sleep']]);
+  expect(submitted.map(b=>[b.p_master_id,b.p_slave_id,b.p_action])).toEqual([[slave === 4 ? 201 : 5,slave,'tracking'],[slave === 4 ? 201 : 5,slave,'sleep']]);
 });
 
 

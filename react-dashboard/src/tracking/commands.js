@@ -2,7 +2,7 @@ export const COMMAND_FIELDS = 'id,master_id,slave_id,action,status,created_at,ex
 export const CONTROL_SLAVE_IDS = [4, 6, 8, 102, 104, 108];
 export const supportsControl = slaveId => CONTROL_SLAVE_IDS.includes(slaveId);
 export const controlMasters = (authorized, slaveId) => [5, 201].filter(id =>
-  authorized.includes(id) && (id === 5 || ![4, 6].includes(slaveId)));
+  authorized.includes(id) && (id === 5 || slaveId !== 6));
 // Control ownership is independent of the Master forwarding the latest GPS.
 export function modeMasterId(dog, authorizedMasters) {
   return supportsControl(dog.id) ? controlMasters(authorizedMasters, dog.id)[0] ?? dog.masterId : dog.masterId;

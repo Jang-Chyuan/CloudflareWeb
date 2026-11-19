@@ -73,20 +73,20 @@ test('Slave 8 supports tracking and sleep through either Master', async () => {
  }
 });
 
-test('Slave 4/6 commands use Master 5 and reject Master 201 before RPC', async () => {
+test('Slave 6 commands use Master 5 and reject Master 201 before RPC', async () => {
   const calls = [];
   const client = {rpc: async (name, args) => { calls.push({name, args}); return {data: {id:'ok'}}; }};
-  for (const slave of [4, 6]) for (const action of ['tracking', 'sleep']) {
+  for (const slave of [6]) for (const action of ['tracking', 'sleep']) {
     await createDeviceCommand(client, action, 'retry-' + slave, slave, 5);
     assert.deepEqual(calls.at(-1), {name:'create_device_command', args:{p_master_id:5,p_slave_id:slave,p_action:action,p_request_id:'retry-' + slave}});
     await assert.rejects(createDeviceCommand(client, action, 'bad', slave, 201));
   }
-  assert.equal(calls.length, 4);
+  assert.equal(calls.length, 2);
 });
 
-test('Slave 4/6 mode reads use the authorized Master 5 controller', async () => {
+test('Slave 6 mode reads use the authorized Master 5 controller', async () => {
   const {controlMasters, modeMasterId, resolveModeStatus, supportsControl} = await import('../src/tracking/commands.js');
-  for (const slave of [4, 6]) {
+  for (const slave of [6]) {
     assert.equal(supportsControl(slave), true);
     assert.deepEqual(controlMasters([5,201], slave), [5]);
     assert.deepEqual(controlMasters([201], slave), []);
@@ -97,4 +97,21 @@ test('Slave 4/6 mode reads use the authorized Master 5 controller', async () => 
     assert.equal(result.ready, true);
     assert.equal(result.masterId, 5);
   }
+});
+
+test('Slave 4 supports authorized Master 201 tracking and sleep', async () => {
+  const {controlMasters, resolveModeStatus} = await import('../src/tracking/commands.js');
+  assert.deepEqual(controlMasters([5,201], 4), [5,201]);
+  assert.deepEqual(controlMasters([201], 4), [201]);
+  assert.deepEqual(controlMasters([], 4), []);
+  const calls=[];
+  const client={rpc:async(name,args)=>{calls.push(args);return {data:{id:'slave4'}};}};
+  for(const master of [5,201]) for(const action of ['tracking','sleep']) {
+    await createDeviceCommand(client,action,'slave4-'+action,4,master);
+    assert.deepEqual(calls.at(-1),{p_master_id:master,p_slave_id:4,p_action:action,p_request_id:'slave4-'+action});
+  }
+  const command={master_id:201,slave_id:4,status:'confirmed',reported_mode:1,completed_at:'2026-11-18T13:00:00Z'};
+  const result=resolveModeStatus({id:4,masterId:201},[201],{'201:4':{command,ready:true}});
+  assert.equal(result.command,command);
+  assert.equal(result.masterId,201);
 });
